@@ -47,6 +47,35 @@ def identify_path(base_type: str) -> str:
     return path
 
 
+def create_path() -> tuple:
+    print("\n>>> Create New Project ...")
+    is_valid_name = False
+    folder_name = None
+    full_path = None
+
+    print(">>>  Folder to place new project ...")
+
+    folder_path = identify_path('folder')
+    display_path_desc(folder_path, 'folder')
+
+    while not is_valid_name:
+        folder_name = input(">>>  New project name : ").strip()
+        full_path = os.path.abspath(os.path.join(folder_path, folder_name))
+
+        try:
+            os.mkdir(full_path)
+            display_message("INFO", "Project folder created")
+            display_path_desc(full_path, 'folder')
+            is_valid_name = True
+
+        except OSError as os_e:
+            display_message("ERROR", "Invalid directory.", f"{os_e}")
+        except  Exception as e:
+            display_message("ERROR", "Error creating new project.", f"{e}")
+
+    return folder_name, full_path
+
+
 def display_path_desc(filepath: str, base_type: str) -> tuple:
     parent_name, base_name = os.path.split(filepath)
     split_parent_name = parent_name.split(os.sep)
