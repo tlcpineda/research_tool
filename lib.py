@@ -59,7 +59,7 @@ def create_path() -> tuple:
     display_path_desc(folder_path, 'folder')
 
     while not is_valid_name:
-        folder_name = input(">>>  New project name : ").strip()
+        folder_name = input("\n>>>  New project name : ").strip()
         full_path = os.path.abspath(os.path.join(folder_path, folder_name))
 
         try:

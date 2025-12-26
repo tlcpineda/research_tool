@@ -32,12 +32,11 @@ class RegistryManager:
 
         self.registry_path = path.join(self.user_data_path, registry_name)
         self.projects = self._load_registry()
+        self._save_registry()
 
 
     def _load_registry(self):
-        """
-        Loads registry JSON file, or returns an empty list if not found.
-        """
+        """Loads registry JSON file, or returns an empty list if not found."""
         if path.exists(self.registry_path):
             with open(self.registry_path, 'r') as file:
                 try:
@@ -49,9 +48,7 @@ class RegistryManager:
 
 
     def _save_registry(self):
-        """
-        Saves the current project list to registry JSON file.
-        """
+        """Saves the current project list to registry JSON file."""
         with open(self.registry_path, 'w') as file:
             json.dump(self.projects, file, indent=2)
 
