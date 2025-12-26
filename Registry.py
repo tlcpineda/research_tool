@@ -15,9 +15,11 @@ img_folder = 'assets'   # Folder name containing the images snipped
 
 class RegistryManager:
     def __init__(self):
-        # Determine the location of the app; executable or .py script.
-        file = sys.executable if getattr(sys, 'frozen', False) else path.abspath(path.dirname(__file__))
-        current_dir = path.dirname(file)
+        current_dir = path.abspath(path.dirname(__file__))  # Default running as a py script
+
+        # Redefine if run as executable file.
+        if getattr(sys, 'frozen', False):
+            current_dir = path.dirname(path.abspath(sys.executable))
 
         # Move one level up if script is in 'dist' folder.
         self.app_parent = path.dirname(current_dir) if path.basename(current_dir).lower() == 'dist' else current_dir
@@ -65,17 +67,20 @@ class RegistryManager:
 
         # Check for duplicate paths.
         for proj in self.projects:
-            if proj['project_path'] == abs_path:
+            if proj['path'] == abs_path:
                 display_message("WARN", "Project already exists in registry.")
                 return False
 
         self.projects.append({
-            'project_name': name,
-            'project_path': abs_path
+            'name': name,
+            'path': abs_path if os.sep == '/' else abs_path.replace(os.sep, "/")
         })
 
         self._save_registry()
         display_message("INFO", f"Project \"{name}\" added to registry.")
+
+        self.initialise_project(len(self.projects))
+        display_message("INFO", f"Folder \"{name}\" initialised.")
 
         return True
 
@@ -90,7 +95,7 @@ class RegistryManager:
             display_message("WARN", "Project number out of range.")
             return False
 
-        project_path = self.projects[project_number - 1]['project_path']
+        project_path = self.projects[project_number - 1]['path']
 
         if not path.exists(project_path):
             display_message("WARN", "Project path not found.")
