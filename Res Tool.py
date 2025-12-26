@@ -1,4 +1,4 @@
-from Registry import RegistryManager
+from Tools import RegistryManager
 from lib import welcome_sequence, hor_bar, continue_sequence, display_menu, display_message, create_path
 
 # Module Variables

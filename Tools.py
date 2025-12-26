@@ -120,3 +120,54 @@ class RegistryManager:
             return False
 
 
+class TextSnippet:
+    def __init__(self, project_path):
+        self.log_path = path.join(project_path, 'research_log.json')
+
+    def collect_multi_line_content(self):
+        """Allows pasting of multiple paragraphs."""
+        print("\n--- Paste/Type your research text below ---")
+        print("(Press ENTER twice or type 'SAVE' on a new line to finish)")
+
+        lines = []
+        while True:
+            line = input()
+            if line.strip().upper() == "SAVE" or line == "":
+                break
+            lines.append(line)
+
+        return "\n".join(lines)
+
+    def save_entry(self, title, content, source, tags, notes):
+        """Writes the entry to the project's research_log.json."""
+
+        new_entry = {
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "title": title,
+            "content": content,
+            "source": source,
+            "tags": tags,
+            "notes": notes
+        }
+
+        try:
+            # 1. Load existing data or start new list
+            data = []
+            if path.exists(self.log_path):
+                with open(self.log_path, 'r', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        data = []
+
+            # 2. Append and Save
+            data.append(new_entry)
+            with open(self.log_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            display_message("INFO", "Text entry recorded.")
+            return True
+
+        except Exception as e:
+            display_message("WARN", "File error while saving entry.", str(e))
+            return False
