@@ -2,9 +2,9 @@ import os
 import tkinter as tk
 from tkinter import filedialog as fd
 
-def welcome_sequence(items: list):
+def welcome_sequence(items: list, width: int) -> None:
     max_chars = len(max(items, key=len))
-    line_len =  max(max_chars + 10 * 2, 60)
+    line_len =  max(max_chars + 10 * 2, width or 60)
     items = [''] + items + ['']
 
     hor_bar(line_len)
@@ -15,13 +15,14 @@ def welcome_sequence(items: list):
     hor_bar(line_len)
 
 
-def hor_bar(num_chars: int, text: str=None) -> None:
+def hor_bar(num_chars: int, indent: int=0, text: str=None) -> None:
     display_x = num_chars * "░"
 
-    if text is not None:    # Redefine display is text is defined
+    if text is not None:    # Redefine display if text is defined
         text_len = len(text)
         padded_len = (0 if text is None else 2) * 2 + text_len
-        display_x = display_x[:5] + f"{text:^{padded_len}}" + display_x[5+padded_len:]
+        indent = indent if indent else 0
+        display_x = display_x[:indent] + f"{text:^{padded_len}}" + display_x[indent+padded_len:]
 
     print(display_x)
 
@@ -207,3 +208,18 @@ def rename_path(path_src: str, path_dst, pathtype: str) -> None:
             f"Failed to rename {pathtype}.",
             f"{e}"
         )
+
+
+def display_menu(width: int, indent: int, options):
+    print("")
+
+    hor_bar(width or 60, indent, "MENU")
+    print("")
+
+    for option in options:
+        print(f"{" ":{indent or 5}}{option['menu']}")
+
+    print("")
+    hor_bar(width or 60, indent)
+
+    print("\n>>> Select an option ...")
