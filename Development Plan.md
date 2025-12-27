@@ -11,7 +11,7 @@
 ## CORE PHILOSOPHY
 * **Intentionality** : User inputs metadata BEFORE the snip to ensure organisation.
 * **One-Shot Execution** : No background listeners. Run >> Capture >> Save >> Exit.
-* **Portability** : Avoid global binaries (like `Tesseract`). Use pip-managed libraries only.
+* ~~**Portability** : Avoid global binaries (like `Tesseract`). Use pip-managed libraries only.~~
 * **Atomic Data** : Each entry is a discrete JSON object representing one "Index Card."
 
 ---
@@ -58,7 +58,7 @@ Each capture creates an object with the following keys:
     3. New Entry (If neither, create a new tag and update 'tags.json').
 
 ### Processing Modules
-- Text Module: Uses `EasyOCR` with paragraph grouping for high-fidelity snippets.
+- Text Module: Uses ~~`EasyOCR`~~ `PyTesseract` with paragraph grouping for high-fidelity snippets.
 - Table Module: Uses `OpenCV` or `img2table` to reconstruct 2D structure.
 - Image Module: Handles file compression and local storage in an /assets/ folder.
 
