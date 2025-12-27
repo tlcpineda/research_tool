@@ -1,9 +1,10 @@
 import json
-
+import datetime
 import os
-
 import sys
+import easyocr
 from os import path
+from PIL import ImageGrab, Image
 from lib import display_message
 
 # Class variables :
@@ -120,29 +121,97 @@ class RegistryManager:
             return False
 
 
-class TextSnippet:
+class TextEntry:
     def __init__(self, project_path):
+        """Initialise with the path to the active project."""
+        self.project_path = project_path
         self.log_path = path.join(project_path, 'research_log.json')
 
-    def collect_multi_line_content(self):
-        """Allows pasting of multiple paragraphs."""
-        print("\n--- Paste/Type your research text below ---")
-        print("(Press ENTER twice or type 'SAVE' on a new line to finish)")
+    def capture_img(self):
+        """Prompt user to take a screenshot.  Image in clipboard will be processed."""
+        print("\n<=> Use preferred snipping tool to copy image to clipboard.")
 
-        lines = []
+        # Wait for user confirmation
+        # user_input = input(
+        #     "\nIs the image in your clipboard? (Press ENTER to continue, or 'q' to cancel): ").strip().lower()
+        #
+        # if user_input == 'q':
+        #     display_message("INFO", "Capture cancelled by user.")
+        #     return None
+
+        in_clipboard = False
+
+        while not in_clipboard:
+            user_input = input(">>> Image copied to clipboard [Y]es/[No] ? ").strip().upper()
+            in_clipboard = True if user_input=='Y' else False
+
+        try:
+            # Pull the image from the system clipboard.
+            img = ImageGrab.grabclipboard()
+
+            if isinstance(img, Image.Image):
+                display_message("INFO", "Image retrieved from clipboard.")
+                return img
+
+            elif img is None:
+                display_message("WARN", "Clipboard is empty.")
+                return None
+
+            elif isinstance(img, list):
+                # If it's a list (some OS return a list of file paths if you copy a file)
+                display_message("WARN", "Clipboard contains files.")
+                return None
+
+            else:
+                display_message("WARN", "Clipboard content is not a valid format.")
+                return None
+
+        except Exception as e:
+            display_message("WARN", "Error accessing clipboard.", f"{e}")
+            return None
+
+
+    def capture_entry(self, tags_manager=None):
+        """The main workflow for capturing a text entry."""
+        print("\n--- NEW TEXT ENTRY ---")
+
+        # 1. Capture the Content (The Snip)
+        print("Paste your text (Press Enter on an empty line to finish):")
+        content_lines = []
         while True:
             line = input()
-            if line.strip().upper() == "SAVE" or line == "":
+            if line == "":
                 break
-            lines.append(line)
+            content_lines.append(line)
 
-        return "\n".join(lines)
+        content = "\n".join(content_lines).strip()
 
-    def save_entry(self, title, content, source, tags, notes):
-        """Writes the entry to the project's research_log.json."""
+        if not content:
+            display_message("WARN", "Entry cancelled: No text provided.")
+            return False
 
-        new_entry = {
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # 2. Capture Metadata
+        title = input("Entry Title: ").strip() or "Untitled Entry"
+        source = input("Source (URL/Book): ").strip()
+
+        # 3. Handle Tags (Placeholding for your TagManager)
+        if tags_manager:
+            tags_manager.display_tags()
+            tag_input = input("Enter tags (comma separated or numbers): ")
+            final_tags = tags_manager.resolve_tags(tag_input)
+        else:
+            tag_input = input("Tags (comma separated): ")
+            final_tags = [t.strip() for t in tag_input.split(',') if t.strip()]
+
+        notes = input("Personal Notes: ").strip()
+
+        # 4. Save
+        return self._save_to_log(title, content, source, final_tags, notes)
+
+
+    def _save_to_log(self, title, content, source, tags, notes):
+        entry = {
+            "timestamp": f"{datetime.datetime.now()}Z",
             "title": title,
             "content": content,
             "source": source,
@@ -151,7 +220,6 @@ class TextSnippet:
         }
 
         try:
-            # 1. Load existing data or start new list
             data = []
             if path.exists(self.log_path):
                 with open(self.log_path, 'r', encoding='utf-8') as f:
@@ -160,14 +228,15 @@ class TextSnippet:
                     except json.JSONDecodeError:
                         data = []
 
-            # 2. Append and Save
-            data.append(new_entry)
+            data.append(entry)
+
             with open(self.log_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
-            display_message("INFO", "Text entry recorded.")
+            display_message("INFO", "Entry saved to research log.")
             return True
 
         except Exception as e:
-            display_message("WARN", "File error while saving entry.", str(e))
+            display_message("WARN", "Could not save entry.", str(e))
             return False
+
