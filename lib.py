@@ -27,23 +27,28 @@ def hor_bar(num_chars: int, indent: int=0, text: str=None) -> None:
     print(display_x)
 
 
-def identify_path(base_type: str) -> str:
+def identify_path(base_type: str, file_type: str) -> str:
     root = tk.Tk()
     root.withdraw()
+    root.attributes("-topmost", True)
+
+    file_label = file_type.upper()
+    file_ext = file_type.lower()
 
     path = None
 
     match base_type:
         case "file":
             path = fd.askopenfilename(
-                title="Select PDF File",
-                filetypes=(("PDF files", "*.pdf"), ("All files", "*.*"))
+                title=f"Select {file_label} File",
+                filetypes=((f"{file_label} files", f"*.{file_ext}"), ("All files", "*.*"))
             )
         case "folder":
             path = fd.askdirectory(
                 title="Select Folder"
             )
 
+    root.destroy()
     return path
 
 

@@ -1,11 +1,12 @@
-import json
+import csv
 import datetime
+import json
 import os
+import pytesseract
 import sys
-import easyocr
 from os import path
 from PIL import ImageGrab, Image
-from lib import display_message
+from lib import display_message, identify_path, display_path_desc
 
 # Class variables :
 registry_name = 'registry.json'  # JSON log of projects; list of objects
@@ -13,6 +14,7 @@ user_data = 'user_data' # Folder name containing the registry file
 research_log = 'research_log.json'  # JSON log of all research data.
 tags = 'tags.json'  # JSON log of tags used for each entry in research_log
 img_folder = 'assets'   # Folder name containing the images snipped
+paths_csv = 'paths.csv'
 
 class RegistryManager:
     def __init__(self):
@@ -31,9 +33,103 @@ class RegistryManager:
         if not path.exists(self.user_data_path):
             os.makedirs(self.user_data_path)
 
-        self.registry_path = path.join(self.user_data_path, registry_name)
+        self.paths_csv = path.join(self.user_data_path, paths_csv)  # Define path to paths.csv file.
+        self.registry_path = path.join(self.user_data_path, registry_name)  # Create registry.json file
+
+        self._check_paths_file() # Ensure that CSV files containing possible locations of tesseract.exe exists.
+        self.tesseract_path = self._config_tesseract_path() # Identify path to tesseract.exe, or ask user to install it.
+        pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+        self._clean_up_files_path() # Wipe CSV file, and save only the correct path.
         self.projects = self._load_registry()
         self._save_registry()
+
+
+    def _config_tesseract_path(self):
+        """Determine the path to the tesseract executable."""
+        ocr_path = None
+        try:
+            # Check if one of the paths listed is valid.
+            with open(self.paths_csv, 'r', encoding='utf-8') as file:
+                reader = csv.reader(file)
+
+                for row in reader:
+                    if not row: continue
+
+                    ocr_path = path.normpath(path.expanduser(row[0]))
+
+                    if path.exists(ocr_path):
+                        display_message("INFO", f"OCR Engine linked : {ocr_path}")
+                        return ocr_path
+
+        except Exception as e:
+            display_message("WARN", "OCR configuration error.")
+
+        # Prompt user to install, and/or locate path to executable file.
+        display_message("WARN", "Tesseract OCR engine not found.")
+        display_message("1", "Install engine based on OS - https://tesseract-ocr.github.io/tessdoc/Installation.html .")
+        display_message("2", "If already installed, locate the path to the executable.")
+        display_message("", "Ex : C:/Program Files/Tesseract-OCR/tesseract.exe")
+
+        user_input = False
+
+        while not user_input:
+            user_input = input("\n>>> [L]ocate path / E[X]it and close window for now ?").strip().upper()
+
+            if user_input == 'X': sys.exit()
+            if user_input == 'L':
+                ocr_path = self._identify_ocr_path()
+
+                if not ocr_path or ocr_path == ".":
+                    user_input = False
+                    display_message("WARN", "No file selected.")
+                elif path.exists(ocr_path):
+                    display_message("INFO", "Tesseract engine identified.")
+                    display_path_desc(ocr_path, 'file')
+                else:
+                    user_input = False
+                    display_message("WARN", "Invalid path.")
+
+        return ocr_path
+
+
+    def _identify_ocr_path(self) -> str:
+        print("\n>>> Locate Tesseract Executable File ...")
+        path_input = identify_path('file', 'exe')
+        norm_path = path.normpath(path_input)
+
+        display_path_desc(norm_path, 'file')
+
+        return norm_path
+
+
+    def _clean_up_files_path(self):
+        """Delete contents of paths.csv, and replace with the correctly identified / user-supplied path."""
+        try:
+            with open(self.paths_csv, 'w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                tess_path = self.tesseract_path if os.sep=='/' else self.tesseract_path.replace(os.sep, '/')
+                writer.writerow([tess_path])
+
+        except Exception as e:
+            display_message("WARN", f"{paths_csv} cannot be updated.", f"{e}")
+
+
+    def _check_paths_file(self):
+        """Creates a default CSV file for paths to be used by Tesseract."""
+        csv_file = self.paths_csv
+
+        if not path.exists(csv_file):
+            paths = [
+                ['C:/Program Files/Tesseract-OCR/tesseract.exe'],
+                ['~/AppData/Local/Tesseract-OCR/tesseract.exe'],
+                ['/usr/homebrew/bin/tesseract'],
+                ['/usr/local/bin/tesseract/'],
+                ['/usr/bin/tesseract/']
+            ]   # Possible locations of tesseract.exe
+
+            with open(csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(paths)
 
 
     def _load_registry(self):
