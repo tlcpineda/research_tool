@@ -14,7 +14,7 @@ user_data = 'user_data' # Folder name containing the registry file
 research_log = 'research_log.json'  # JSON log of all research data.
 tags = 'tags.json'  # JSON log of tags used for each entry in research_log
 img_folder = 'assets'   # Folder name containing the images snipped
-paths_csv = 'paths.csv'
+paths_csv = 'paths.csv' # The CSV file containing the path to tesseract.exe; initialised with possible locations.
 
 class RegistryManager:
     def __init__(self):
@@ -75,8 +75,11 @@ class RegistryManager:
         while not user_input:
             user_input = input("\n>>> [L]ocate path / E[X]it and close window for now ?").strip().upper()
 
-            if user_input == 'X': sys.exit()
-            if user_input == 'L':
+            if user_input not in ['L', 'X']:
+                user_input = False
+            elif user_input == 'X':
+                sys.exit()
+            elif user_input == 'L':
                 ocr_path = self._identify_ocr_path()
 
                 if not ocr_path or ocr_path == ".":
@@ -217,47 +220,129 @@ class RegistryManager:
             return False
 
 
+class TagManager:
+    def __init__(self, project_path) -> None:
+        self.tags_path = path.normpath(path.join(project_path, tags))
+        self.tags_list = self._load_tags()
+
+
+    def _load_tags(self):
+        """Load the JSON array as a Python list."""
+        if path.exists(self.tags_path):
+            with open(self.tags_path, 'r') as file:
+                try:
+                    return json.load(file)
+                except json.decoder.JSONDecodeError:
+                    return []
+
+        return []
+
+
+    def list_tags(self):
+        """List tags currently used in the project."""
+        if not self.tags_list:
+            display_message("INFO", "No tags currently defined.")
+            return
+
+        num_tags = len(self.tags_list)
+        num_cols = 4
+        col_width = 25
+        text_limit = 20
+        rows = (num_tags + num_cols - 1) // num_cols    # Determine number of rows for layout.
+
+        print("\n<=> Available tags :")
+
+        for r in range(rows):
+            line = ""
+
+            for c in range(num_cols):
+                index = r + (c * rows)
+
+                if index<num_tags:
+                    tag_name = self.tags_list[index]
+                    tag_id = index + 1
+                    display_text = f"[{tag_id}] {tag_name}"
+
+                    if len(display_text)>text_limit:
+                        display_text = display_text[:text_limit] + "..."
+
+                    line += f"{display_text:<{col_width}}"
+
+            if line.strip(): print(line)
+
+
+
+
+
+    # TODO pending check
+    def resolve_tags(self, user_input):
+        """Converts raw input into a list of valid tag strings."""
+        raw_items = [item.strip() for item in user_input.split(',') if item.strip()]
+        final_tags = []
+        updated = False
+
+        for item in raw_items:
+            if item.isdigit():
+                idx = int(item) - 1
+                if 0 <= idx < len(self.tags_list):
+                    tag_name = self.tags_list[idx]
+                    if tag_name not in final_tags:
+                        final_tags.append(tag_name)
+                else:
+                    print(f"[!] Warning: No tag found for number '{item}'")
+            else:
+                tag_name = item.lower().replace(" ", "-")
+                if tag_name not in self.tags_list:
+                    self.tags_list.append(tag_name)
+                    updated = True
+
+                if tag_name not in final_tags:
+                    final_tags.append(tag_name)
+
+        if updated:
+            self._save_tags()
+
+        return final_tags
+
+
+    def _save_tags(self):
+        """Saves the Python list back to tags.json."""
+        with open(self.tags_path, 'w', encoding='utf-8') as file:
+            json.dump(self.tags_list, file, indent=2)
+
+
+
 class TextEntry:
     def __init__(self, project_path):
         """Initialise with the path to the active project."""
         self.project_path = project_path
-        self.log_path = path.join(project_path, 'research_log.json')
+        self.log_path = path.join(project_path, research_log)
+        self.assets_path = path.join(project_path, img_folder)
 
-    def capture_img(self):
+
+    def _capture_img(self) -> Image.Image | None:
         """Prompt user to take a screenshot.  Image in clipboard will be processed."""
         print("\n<=> Use preferred snipping tool to copy image to clipboard.")
-
-        # Wait for user confirmation
-        # user_input = input(
-        #     "\nIs the image in your clipboard? (Press ENTER to continue, or 'q' to cancel): ").strip().lower()
-        #
-        # if user_input == 'q':
-        #     display_message("INFO", "Capture cancelled by user.")
-        #     return None
 
         in_clipboard = False
 
         while not in_clipboard:
             user_input = input(">>> Image copied to clipboard [Y]es/[No] ? ").strip().upper()
-            in_clipboard = True if user_input=='Y' else False
+            if user_input=='Y': in_clipboard = True
 
         try:
-            # Pull the image from the system clipboard.
-            img = ImageGrab.grabclipboard()
+            img = ImageGrab.grabclipboard() # Pull the image from the system clipboard.
 
             if isinstance(img, Image.Image):
                 display_message("INFO", "Image retrieved from clipboard.")
                 return img
-
             elif img is None:
                 display_message("WARN", "Clipboard is empty.")
                 return None
-
             elif isinstance(img, list):
                 # If it's a list (some OS return a list of file paths if you copy a file)
                 display_message("WARN", "Clipboard contains files.")
                 return None
-
             else:
                 display_message("WARN", "Clipboard content is not a valid format.")
                 return None
@@ -267,72 +352,103 @@ class TextEntry:
             return None
 
 
+    def _extract_text(self, img) -> str:
+        """
+        Extract contents from the snipped image.
+        FUTURE formatting detection; boldface, italics, variable font face
+        """
+        try:
+            text = pytesseract.image_to_string(img, lang='eng')
+            return text.strip()
+        except Exception as e:
+            display_message("WARN", "OCR text extraction failed.", f"{e}")
+            return ""
+
+
     def capture_entry(self, tags_manager=None):
         """The main workflow for capturing a text entry."""
-        print("\n--- NEW TEXT ENTRY ---")
+        print("\n>>> Create new text entry ...")
 
-        # 1. Capture the Content (The Snip)
-        print("Paste your text (Press Enter on an empty line to finish):")
-        content_lines = []
-        while True:
-            line = input()
-            if line == "":
-                break
-            content_lines.append(line)
+        text_detected = False
+        content = None
 
-        content = "\n".join(content_lines).strip()
+        while not text_detected:
+            # Capture the content; take a screen snip.
+            img = self._capture_img()
 
-        if not content:
-            display_message("WARN", "Entry cancelled: No text provided.")
-            return False
+            if not img: return False
 
-        # 2. Capture Metadata
-        title = input("Entry Title: ").strip() or "Untitled Entry"
-        source = input("Source (URL/Book): ").strip()
+            content = self._extract_text(img)
 
-        # 3. Handle Tags (Placeholding for your TagManager)
+            if not content:
+                display_message("WARN", "No text detected.")
+
+                retry_snip = False
+
+                while not retry_snip:
+                    print("\n>>> Select an option to continue :")
+                    print(">>>  [R]etry taking a screenshot.")
+                    print(">>>  E[X]it text entry")
+
+                    retry_snip = input("\n>>> ").strip().upper()
+
+                    if retry_snip=='X':
+                        retry_snip = True
+                        display_message("INFO", "Text entry cancelled.")
+                    elif retry_snip=='R':
+                        retry_snip = False
+                    else:
+                        retry_snip = False
+                        display_message("WARN", "Enter one of the options [\"R\", \"X\"].")
+
+            display_message("INFO", "Text entry captured.")
+            print(f">>> CONTENT :\n{content}")
+
+        # Capture metadata
+        title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
+        source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
+        notes = input("\n>>> Notes : ").strip()
+
+        # Affix tags.
         if tags_manager:
-            tags_manager.display_tags()
-            tag_input = input("Enter tags (comma separated or numbers): ")
+            tags_manager.list_tags()
+            tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
             final_tags = tags_manager.resolve_tags(tag_input)
         else:
-            tag_input = input("Tags (comma separated): ")
-            final_tags = [t.strip() for t in tag_input.split(',') if t.strip()]
+            tag_input = input("\n>>> Enter tags (comma separated) : ")
+            final_tags = [tag.strip() for tag in tag_input.split(',') if tag.strip()]
 
-        notes = input("Personal Notes: ").strip()
-
-        # 4. Save
         return self._save_to_log(title, content, source, final_tags, notes)
 
 
-    def _save_to_log(self, title, content, source, tags, notes):
-        entry = {
-            "timestamp": f"{datetime.datetime.now()}Z",
-            "title": title,
-            "content": content,
-            "source": source,
-            "tags": tags,
-            "notes": notes
-        }
-
-        try:
-            data = []
-            if path.exists(self.log_path):
-                with open(self.log_path, 'r', encoding='utf-8') as f:
-                    try:
-                        data = json.load(f)
-                    except json.JSONDecodeError:
-                        data = []
-
-            data.append(entry)
-
-            with open(self.log_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            display_message("INFO", "Entry saved to research log.")
-            return True
-
-        except Exception as e:
-            display_message("WARN", "Could not save entry.", str(e))
-            return False
+    # def _save_to_log(self, title, content, source, tags, notes):
+    #     entry = {
+    #         "timestamp": f"{datetime.datetime.now()}Z",
+    #         "title": title,
+    #         "content": content,
+    #         "source": source,
+    #         "tags": tags,
+    #         "notes": notes
+    #     }
+    #
+    #     try:
+    #         data = []
+    #         if path.exists(self.log_path):
+    #             with open(self.log_path, 'r', encoding='utf-8') as f:
+    #                 try:
+    #                     data = json.load(f)
+    #                 except json.JSONDecodeError:
+    #                     data = []
+    #
+    #         data.append(entry)
+    #
+    #         with open(self.log_path, 'w', encoding='utf-8') as f:
+    #             json.dump(data, f, indent=2, ensure_ascii=False)
+    #
+    #         display_message("INFO", "Entry saved to research log.")
+    #         return True
+    #
+    #     except Exception as e:
+    #         display_message("WARN", "Could not save entry.", str(e))
+    #         return False
 
