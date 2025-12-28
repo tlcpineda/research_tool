@@ -271,33 +271,60 @@ class TagManager:
             if line.strip(): print(line)
 
 
-
-
-
-    # TODO pending check
     def resolve_tags(self, user_input):
-        """Converts raw input into a list of valid tag strings."""
+        """
+        Maps numeric input to existing tags or adds new string tags.
+        Numeric tags, for year, or statute numbers, are enclosed by angle brackets. eg "<1924>", "<1081>"
+        Multi-word tags are truncated at the first space, and stripped of punctuations.
+        """
         raw_items = [item.strip() for item in user_input.split(',') if item.strip()]
         final_tags = []
         updated = False
 
         for item in raw_items:
+            # Handle tag IDs (no cleaning).
             if item.isdigit():
                 idx = int(item) - 1
-                if 0 <= idx < len(self.tags_list):
+
+                if 0<=idx<len(self.tags_list):
                     tag_name = self.tags_list[idx]
+
                     if tag_name not in final_tags:
                         final_tags.append(tag_name)
-                else:
-                    print(f"[!] Warning: No tag found for number '{item}'")
-            else:
-                tag_name = item.lower().replace(" ", "-")
-                if tag_name not in self.tags_list:
-                    self.tags_list.append(tag_name)
-                    updated = True
 
-                if tag_name not in final_tags:
-                    final_tags.append(tag_name)
+                    continue
+
+                else:
+                    display_message("WARN", f"Tag number ({item}) out of range.")
+
+                    continue
+
+            clean_item = lambda c: "".join(char for char in c if char.isalnum())
+
+            # Check for brackets.
+            if '<' in item and '>' in item:
+                # Extract content between brackets.
+                content = item[item.find('<'):item.find('>')]
+
+                # Clean up apparent multi-word entry, with extraneous punctuations.
+                # Strip off punctuations, and get the first partition that is purely numeric.
+                clean_inner = clean_item(content)
+                tag_name = f"<{[n for n in clean_inner.split() if n.isdigit()][0]}>"
+
+            else:
+                # Take first word of the raw string, and strip punctuations.
+                clean_word = clean_item(item.split()[0])
+
+                if not clean_word: continue
+                tag_name = clean_word.upper()
+
+            # Finalise master list and selection.
+            if tag_name not in self.tags_list:
+                self.tags_list.append(tag_name)
+                updated = True
+
+            if tag_name not in final_tags:
+                final_tags.append(tag_name)
 
         if updated:
             self._save_tags()
@@ -413,10 +440,10 @@ class TextEntry:
         if tags_manager:
             tags_manager.list_tags()
             tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
-            final_tags = tags_manager.resolve_tags(tag_input)
         else:
             tag_input = input("\n>>> Enter tags (comma separated) : ")
-            final_tags = [tag.strip() for tag in tag_input.split(',') if tag.strip()]
+
+        final_tags = tags_manager.resolve_tags(tag_input)
 
         return self._save_to_log(title, content, source, final_tags, notes)
 
