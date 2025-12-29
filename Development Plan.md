@@ -16,10 +16,44 @@
 
 ---
 
-## DATA STRUCTURE (JSON SCHEMA)
+## REGISTRY SCHEMA
+Each project has a corresponding object stored in `registry.json`.
+
+Example :
+
+```
+{
+    "name": "Legal Research on the Impact of Government Subsidies 2025",
+    "path": "C:/Users/Name/Documents/History Project",
+    "lang": "fra+eng+deu",
+    "created": "2025-10-25T05:05:35.000000Z"
+  }
+```
+
+- **name** : (User) The name of the project
+- **path** : (User) The local path to the folder containing the resources for project
+- **lang** : (User) The languages used in OCR methods; currently only ENG is supported.
+- **created** : (System) The UTC date object when the folder is created
+
+
+## DATA SCHEMA
 Each capture creates an object with the following keys:
 
-- **id** : (System) UUID v4 string.
+Example :
+
+```
+{
+  "type": "text",
+  "title": "INDUSTRIAL-REVOLUTION-NOTES",
+  "source": "https://en.wikipedia.org/wiki/Industrial_Revolution",
+  "notes": "Found this particularly useful for the chapter on steam power."
+  "tags": ["HISTORY", "ECONOMICS", "<1760>", "<1840>"],
+  "content": "The transition to new manufacturing processes in Great Britain, continental Europe and the United States, in the period from about 1760 to sometime between 1820 and 1840.",
+  "date": "2025-12-30T10:15:30.005225Z",
+}
+```
+
+- ~~**id** : (System) UUID v4 string.~~
 - **type** : (User) Selection of 'text', 'table', or 'image'.
 - **title** : (User) Descriptive name of the entry.
 - **source** : (User) URL or document reference.
@@ -30,7 +64,7 @@ Each capture creates an object with the following keys:
     - for table: 2D Array (List of Lists); and,
     - for image: String path to the saved .png/.jpg file.
 - **date** : (System) ISO 8601 UTC timestamp.
-- **schema_version** : "1.0"
+- ~~**schema_version** : "1.0"~~
 
 ---
 
