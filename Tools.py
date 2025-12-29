@@ -333,29 +333,34 @@ class TagManager:
 
 
     def _save_tags(self):
-        """Saves the Python list back to tags.json."""
+        """Saves the list back to tags.json."""
         with open(self.tags_path, 'w', encoding='utf-8') as file:
             json.dump(self.tags_list, file, indent=2)
 
 
-
 class TextEntry:
-    def __init__(self, project_path):
+    def __init__(self, project_path, tags_manager):
         """Initialise with the path to the active project."""
         self.project_path = project_path
         self.log_path = path.join(project_path, research_log)
-        self.assets_path = path.join(project_path, img_folder)
+        self.tags_manager = tags_manager
 
 
     def _capture_img(self) -> Image.Image | None:
         """Prompt user to take a screenshot.  Image in clipboard will be processed."""
         print("\n<=> Use preferred snipping tool to copy image to clipboard.")
 
-        in_clipboard = False
+        extract_img = False
+        while not extract_img:
+            print("\n>>> Select an option to proceed :")
+            print(">>>  [E]xtract text from image in clipboard.")
+            print(">>>  [C]ancel text entry.")
 
-        while not in_clipboard:
-            user_input = input(">>> Image copied to clipboard [Y]es/[No] ? ").strip().upper()
-            if user_input=='Y': in_clipboard = True
+            user_input = input(">>> ").strip().upper()
+            if user_input=='E': extract_img = True
+            if user_input=='C':
+                display_message("WARN", "Text entry cancelled.")
+                return None
 
         try:
             img = ImageGrab.grabclipboard() # Pull the image from the system clipboard.
@@ -365,73 +370,88 @@ class TextEntry:
                 return img
             elif img is None:
                 display_message("WARN", "Clipboard is empty.")
-                return None
-            elif isinstance(img, list):
-                # If it's a list (some OS return a list of file paths if you copy a file)
+            elif isinstance(img, list): # Case when files are copied
                 display_message("WARN", "Clipboard contains files.")
-                return None
             else:
                 display_message("WARN", "Clipboard content is not a valid format.")
-                return None
+
+            return None
 
         except Exception as e:
             display_message("WARN", "Error accessing clipboard.", f"{e}")
             return None
 
 
-    def _extract_text(self, img) -> str:
+    def _extract_text(self, img, lang='eng') -> str:
         """
         Extract contents from the snipped image.
         FUTURE formatting detection; boldface, italics, variable font face
         """
         try:
-            text = pytesseract.image_to_string(img, lang='eng')
+            text = pytesseract.image_to_string(img, lang=lang)
             return text.strip()
         except Exception as e:
             display_message("WARN", "OCR text extraction failed.", f"{e}")
             return ""
 
 
-    def capture_entry(self, tags_manager=None):
-        """The main workflow for capturing a text entry."""
+    def capture_entry(self):
+        """The main workflow for capturing a text entry"""
         print("\n>>> Create new text entry ...")
 
+        title, source, notes, entry_tags = self._capture_meta() # Prompt user for entry metadata.
         text_detected = False
         content = None
-
         while not text_detected:
-            # Capture the content; take a screen snip.
-            img = self._capture_img()
+            img = self._capture_img()   # Take a screen snip, and capture the content.
 
-            if not img: return False
+            if not img: return False    # Either user cancelled, no image in clipboard
 
             content = self._extract_text(img)
 
             if not content:
                 display_message("WARN", "No text detected.")
 
-                retry_snip = False
-
-                while not retry_snip:
+                retry_snip = None
+                while retry_snip not in ['R', 'C']:
                     print("\n>>> Select an option to continue :")
                     print(">>>  [R]etry taking a screenshot.")
-                    print(">>>  E[X]it text entry")
+                    print(">>>  [C]ancel text entry.")
 
                     retry_snip = input("\n>>> ").strip().upper()
 
-                    if retry_snip=='X':
-                        retry_snip = True
-                        display_message("INFO", "Text entry cancelled.")
-                    elif retry_snip=='R':
-                        retry_snip = False
+                    if retry_snip=='R':
+                        display_message("INFO", "Retry snipping.")
+                    elif retry_snip=='C':
+                        display_message("WARN", "Text entry cancelled.")
+                        return False
                     else:
-                        retry_snip = False
-                        display_message("WARN", "Enter one of the options [\"R\", \"X\"].")
+                        display_message("WARN", "Enter one of the options [\"R\", \"C\"].")
 
             display_message("INFO", "Text entry captured.")
-            print(f">>> CONTENT :\n{content}")
+            print(f"<=> CONTENT :\n{content}")
 
-        # Capture metadata
+            save_entry = None
+            while save_entry not in ['S', 'E']:
+                save_entry = input("\n>>> [S]ave entry to file, or [E]dit text entry ...")
+                if save_entry=='E':
+                    # self._edit_detected_text()
+                    print("\n>>> Enter revised text entry ...")
+                    content = input(">>> ").strip()
+                elif save_entry=='S': text_detected = True
+                else: display_message("WARN", "Enter one of the options [\"S\", \"E\"].")
+
+        return self._save_to_log(title, content, source, entry_tags, notes)
+
+
+    # FUTURE include a method to allow user edit a prefilled environment with the detected text.
+    # def _edit_detected_text(self):
+    #     pass
+
+
+    def _capture_meta(self):
+        """Capture metadata."""
+        tags_manager = self.tags_manager
         title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
         source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
         notes = input("\n>>> Notes : ").strip()
@@ -443,39 +463,42 @@ class TextEntry:
         else:
             tag_input = input("\n>>> Enter tags (comma separated) : ")
 
-        final_tags = tags_manager.resolve_tags(tag_input)
+        entry_tags = tags_manager.resolve_tags(tag_input)
 
-        return self._save_to_log(title, content, source, final_tags, notes)
+        return title, source, notes, entry_tags
 
 
-    # def _save_to_log(self, title, content, source, tags, notes):
-    #     entry = {
-    #         "timestamp": f"{datetime.datetime.now()}Z",
-    #         "title": title,
-    #         "content": content,
-    #         "source": source,
-    #         "tags": tags,
-    #         "notes": notes
-    #     }
-    #
-    #     try:
-    #         data = []
-    #         if path.exists(self.log_path):
-    #             with open(self.log_path, 'r', encoding='utf-8') as f:
-    #                 try:
-    #                     data = json.load(f)
-    #                 except json.JSONDecodeError:
-    #                     data = []
-    #
-    #         data.append(entry)
-    #
-    #         with open(self.log_path, 'w', encoding='utf-8') as f:
-    #             json.dump(data, f, indent=2, ensure_ascii=False)
-    #
-    #         display_message("INFO", "Entry saved to research log.")
-    #         return True
-    #
-    #     except Exception as e:
-    #         display_message("WARN", "Could not save entry.", str(e))
-    #         return False
+    def _save_to_log(self, title, content, source, entry_tags, notes):
+        entry = {
+            "type": "text",
+            "date": f"{datetime.datetime.now()}Z",
+            "title": title,
+            "content": content,
+            "source": source,
+            "tags": entry_tags,
+            "notes": notes
+        }
+
+        try:
+            data = []
+
+            # Check if research_log file exists; otherwise create.  Expected that file already exists.
+            if path.exists(self.log_path):
+                with open(self.log_path, 'r', encoding='utf-8') as log_file:
+                    try:
+                        data = json.load(log_file)
+                    except json.JSONDecodeError:
+                        data = []
+
+            data.append(entry)
+
+            with open(self.log_path, 'w', encoding='utf-8') as log_file:
+                json.dump(data, log_file, indent=2, ensure_ascii=False)
+
+            display_message("INFO", "Entry added to log.")
+            return True
+
+        except Exception as e:
+            display_message("WARN", "Could not save entry.", str(e))
+            return False
 
