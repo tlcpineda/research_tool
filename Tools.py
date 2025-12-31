@@ -2,30 +2,39 @@ import csv
 import datetime
 import json
 import os
-import pytesseract
 import sys
 from os import path
-from PIL import ImageGrab, Image
-from lib import display_message, identify_path, display_path_desc
+
+import pytesseract
+from PIL import Image, ImageGrab
+
+from lib import display_message, display_path_desc, identify_path
 
 # Class variables :
-registry_name = 'registry.json'  # JSON log of projects; list of objects
-user_data = 'user_data' # Folder name containing the registry file
-research_log = 'research_log.json'  # JSON log of all research data.
-tags = 'tags.json'  # JSON log of tags used for each entry in research_log
-img_folder = 'assets'   # Folder name containing the images snipped
-paths_csv = 'paths.csv' # The CSV file containing the path to tesseract.exe; initialised with possible locations.
+registry_name = "registry.json"  # JSON log of projects; list of objects
+user_data = "user_data"  # Folder name containing the registry file
+research_log = "research_log.json"  # JSON log of all research data.
+tags = "tags.json"  # JSON log of tags used for each entry in research_log
+img_folder = "assets"  # Folder name containing the images snipped
+paths_csv = "paths.csv"  # The CSV file containing the path to tesseract.exe; initialised with possible locations.
+
 
 class RegistryManager:
     def __init__(self):
-        current_dir = path.abspath(path.dirname(__file__))  # Default running as a py script
+        current_dir = path.abspath(
+            path.dirname(__file__)
+        )  # Default running as a py script
 
         # Redefine if run as executable file.
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             current_dir = path.dirname(path.abspath(sys.executable))
 
         # Move one level up if script is in 'dist' folder.
-        self.app_parent = path.dirname(current_dir) if path.basename(current_dir).lower() == 'dist' else current_dir
+        self.app_parent = (
+            path.dirname(current_dir)
+            if path.basename(current_dir).lower() == "dist"
+            else current_dir
+        )
 
         # Set up user_data folder, in app_root.
         self.user_data_path = path.join(self.app_parent, user_data)
@@ -33,27 +42,33 @@ class RegistryManager:
         if not path.exists(self.user_data_path):
             os.makedirs(self.user_data_path)
 
-        self.paths_csv = path.join(self.user_data_path, paths_csv)  # Define path to paths.csv file.
-        self.registry_path = path.join(self.user_data_path, registry_name)  # Create registry.json file
+        self.paths_csv = path.join(
+            self.user_data_path, paths_csv
+        )  # Define path to paths.csv file.
+        self.registry_path = path.join(
+            self.user_data_path, registry_name
+        )  # Create registry.json file
 
-        self._check_paths_file() # Ensure that CSV files containing possible locations of tesseract.exe exists.
-        self.tesseract_path = self._config_tesseract_path() # Identify path to tesseract.exe, or ask user to install it.
+        self._check_paths_file()  # Ensure that CSV files containing possible locations of tesseract.exe exists.
+        self.tesseract_path = (
+            self._config_tesseract_path()
+        )  # Identify path to tesseract.exe, or ask user to install it.
         pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
-        self._clean_up_files_path() # Wipe CSV file, and save only the correct path.
+        self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
         self.projects = self._load_registry()
         self._save_registry()
 
-
     def _config_tesseract_path(self):
         """Determine the path to the tesseract executable."""
-        ocr_path = None
+        ocr_path = ""
         try:
             # Check if one of the paths listed is valid.
-            with open(self.paths_csv, 'r', encoding='utf-8') as file:
+            with open(self.paths_csv, "r", encoding="utf-8") as file:
                 reader = csv.reader(file)
 
                 for row in reader:
-                    if not row: continue
+                    if not row:
+                        continue
 
                     ocr_path = path.normpath(path.expanduser(row[0]))
 
@@ -62,24 +77,31 @@ class RegistryManager:
                         return ocr_path
 
         except Exception as e:
-            display_message("WARN", "OCR configuration error.")
+            display_message("WARN", "OCR configuration error.", f"{e}")
 
         # Prompt user to install, and/or locate path to executable file.
         display_message("WARN", "Tesseract OCR engine not found.")
-        display_message("1", "Install engine based on OS - https://tesseract-ocr.github.io/tessdoc/Installation.html .")
+        display_message(
+            "1",
+            "Install engine based on OS - https://tesseract-ocr.github.io/tessdoc/Installation.html .",
+        )
         display_message("2", "If already installed, locate the path to the executable.")
         display_message("", "Ex : C:/Program Files/Tesseract-OCR/tesseract.exe")
 
         user_input = False
 
         while not user_input:
-            user_input = input("\n>>> [L]ocate path / E[X]it and close window for now ?").strip().upper()
+            user_input = (
+                input("\n>>> [L]ocate path / E[X]it and close window for now ?")
+                .strip()
+                .upper()
+            )
 
-            if user_input not in ['L', 'X']:
+            if user_input not in ["L", "X"]:
                 user_input = False
-            elif user_input == 'X':
+            elif user_input == "X":
                 sys.exit()
-            elif user_input == 'L':
+            elif user_input == "L":
                 ocr_path = self._identify_ocr_path()
 
                 if not ocr_path or ocr_path == ".":
@@ -87,35 +109,36 @@ class RegistryManager:
                     display_message("WARN", "No file selected.")
                 elif path.exists(ocr_path):
                     display_message("INFO", "Tesseract engine identified.")
-                    display_path_desc(ocr_path, 'file')
+                    display_path_desc(ocr_path, "file")
                 else:
                     user_input = False
                     display_message("WARN", "Invalid path.")
 
         return ocr_path
 
-
     def _identify_ocr_path(self) -> str:
         print("\n>>> Locate Tesseract Executable File ...")
-        path_input = identify_path('file', 'exe')
+        path_input = identify_path("file", "exe")
         norm_path = path.normpath(path_input)
 
-        display_path_desc(norm_path, 'file')
+        display_path_desc(norm_path, "file")
 
         return norm_path
-
 
     def _clean_up_files_path(self):
         """Delete contents of paths.csv, and replace with the correctly identified / user-supplied path."""
         try:
-            with open(self.paths_csv, 'w', newline='', encoding='utf-8') as file:
+            with open(self.paths_csv, "w", newline="", encoding="utf-8") as file:
                 writer = csv.writer(file)
-                tess_path = self.tesseract_path if os.sep=='/' else self.tesseract_path.replace(os.sep, '/')
+                tess_path = (
+                    self.tesseract_path
+                    if os.sep == "/"
+                    else self.tesseract_path.replace(os.sep, "/")
+                )
                 writer.writerow([tess_path])
 
         except Exception as e:
             display_message("WARN", f"{paths_csv} cannot be updated.", f"{e}")
-
 
     def _check_paths_file(self):
         """Creates a default CSV file for paths to be used by Tesseract."""
@@ -123,22 +146,21 @@ class RegistryManager:
 
         if not path.exists(csv_file):
             paths = [
-                ['C:/Program Files/Tesseract-OCR/tesseract.exe'],
-                ['~/AppData/Local/Tesseract-OCR/tesseract.exe'],
-                ['/usr/homebrew/bin/tesseract'],
-                ['/usr/local/bin/tesseract/'],
-                ['/usr/bin/tesseract/']
-            ]   # Possible locations of tesseract.exe
+                ["C:/Program Files/Tesseract-OCR/tesseract.exe"],
+                ["~/AppData/Local/Tesseract-OCR/tesseract.exe"],
+                ["/usr/homebrew/bin/tesseract"],
+                ["/usr/local/bin/tesseract/"],
+                ["/usr/bin/tesseract/"],
+            ]  # Possible locations of tesseract.exe
 
-            with open(csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+            with open(csv_file, "w", newline="", encoding="utf-8") as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerows(paths)
-
 
     def _load_registry(self):
         """Loads registry JSON file, or returns an empty list if not found."""
         if path.exists(self.registry_path):
-            with open(self.registry_path, 'r') as file:
+            with open(self.registry_path, "r") as file:
                 try:
                     return json.load(file)
                 except json.decoder.JSONDecodeError:
@@ -146,12 +168,10 @@ class RegistryManager:
 
         return []
 
-
     def _save_registry(self):
         """Saves the current project list to registry JSON file."""
-        with open(self.registry_path, 'w') as file:
+        with open(self.registry_path, "w") as file:
             json.dump(self.projects, file, indent=2)
-
 
     def add_project(self, name, project_path) -> bool:
         """
@@ -164,26 +184,27 @@ class RegistryManager:
 
         # Check for duplicate paths.
         for proj in self.projects:
-            if proj['path'] == abs_path:
+            if proj["path"] == abs_path:
                 display_message("WARN", "Project already exists in registry.")
                 return False
 
-        self.projects.append({
-            'name': name,
-            'path': abs_path if os.sep == '/' else abs_path.replace(os.sep, "/")
-        })
+        self.projects.append(
+            {
+                "name": name,
+                "path": abs_path if os.sep == "/" else abs_path.replace(os.sep, "/"),
+            }
+        )
 
         self._save_registry()
-        display_message("INFO", f"Project \"{name}\" added to registry.")
+        display_message("INFO", f'Project "{name}" added to registry.')
 
         self.initialise_project(len(self.projects))
-        display_message("INFO", f"Folder \"{name}\" initialised.")
+        display_message("INFO", f'Folder "{name}" initialised.')
 
         return True
 
-
     def initialise_project(self, project_number) -> bool:
-        """"
+        """ "
         Check if the project exists in the registry, then initialise project files.
         :param project_number: The project number corresponding to the project name.
         :return:
@@ -192,7 +213,7 @@ class RegistryManager:
             display_message("WARN", "Project number out of range.")
             return False
 
-        project_path = self.projects[project_number - 1]['path']
+        project_path = self.projects[project_number - 1]["path"]
 
         if not path.exists(project_path):
             display_message("WARN", "Project path not found.")
@@ -200,7 +221,7 @@ class RegistryManager:
 
         try:
             # Create 'assets' subfolder.
-            asset_path = path.join(project_path, 'assets')
+            asset_path = path.join(project_path, "assets")
             if not path.exists(asset_path):
                 os.makedirs(asset_path)
 
@@ -209,7 +230,7 @@ class RegistryManager:
                 file_path = path.join(project_path, name)
 
                 if not path.exists(file_path):
-                    with open(file_path, 'w') as file:
+                    with open(file_path, "w") as file:
                         json.dump([], file, indent=2)
 
             return True
@@ -225,18 +246,16 @@ class TagManager:
         self.tags_path = path.normpath(path.join(project_path, tags))
         self.tags_list = self._load_tags()
 
-
     def _load_tags(self):
         """Load the JSON array as a Python list."""
         if path.exists(self.tags_path):
-            with open(self.tags_path, 'r') as file:
+            with open(self.tags_path, "r") as file:
                 try:
                     return json.load(file)
                 except json.decoder.JSONDecodeError:
                     return []
 
         return []
-
 
     def list_tags(self):
         """List tags currently used in the project."""
@@ -248,7 +267,9 @@ class TagManager:
         num_cols = 4
         col_width = 25
         text_limit = 20
-        rows = (num_tags + num_cols - 1) // num_cols    # Determine number of rows for layout.
+        rows = (
+            num_tags + num_cols - 1
+        ) // num_cols  # Determine number of rows for layout.
 
         print("\n<=> Available tags :")
 
@@ -258,18 +279,18 @@ class TagManager:
             for c in range(num_cols):
                 index = r + (c * rows)
 
-                if index<num_tags:
+                if index < num_tags:
                     tag_name = self.tags_list[index]
                     tag_id = index + 1
                     display_text = f"[{tag_id}] {tag_name}"
 
-                    if len(display_text)>text_limit:
+                    if len(display_text) > text_limit:
                         display_text = display_text[:text_limit] + "..."
 
                     line += f"{display_text:<{col_width}}"
 
-            if line.strip(): print(line)
-
+            if line.strip():
+                print(line)
 
     def resolve_tags(self, user_input):
         """
@@ -277,7 +298,7 @@ class TagManager:
         Numeric tags, for year, or statute numbers, are enclosed by angle brackets. eg "<1924>", "<1081>"
         Multi-word tags are truncated at the first space, and stripped of punctuations.
         """
-        raw_items = [item.strip() for item in user_input.split(',') if item.strip()]
+        raw_items = [item.strip() for item in user_input.split(",") if item.strip()]
         final_tags = []
         updated = False
 
@@ -286,7 +307,7 @@ class TagManager:
             if item.isdigit():
                 idx = int(item) - 1
 
-                if 0<=idx<len(self.tags_list):
+                if 0 <= idx < len(self.tags_list):
                     tag_name = self.tags_list[idx]
 
                     if tag_name not in final_tags:
@@ -299,12 +320,13 @@ class TagManager:
 
                     continue
 
-            clean_item = lambda c: "".join(char for char in c if char.isalnum())
+            def clean_item(c):
+                return "".join(char for char in c if char.isalnum())
 
             # Check for brackets.
-            if '<' in item and '>' in item:
+            if "<" in item and ">" in item:
                 # Extract content between brackets.
-                content = item[item.find('<'):item.find('>')]
+                content = item[item.find("<") : item.find(">")]
 
                 # Clean up apparent multi-word entry, with extraneous punctuations.
                 # Strip off punctuations, and get the first partition that is purely numeric.
@@ -315,7 +337,8 @@ class TagManager:
                 # Take first word of the raw string, and strip punctuations.
                 clean_word = clean_item(item.split()[0])
 
-                if not clean_word: continue
+                if not clean_word:
+                    continue
                 tag_name = clean_word.upper()
 
             # Finalise master list and selection.
@@ -331,10 +354,9 @@ class TagManager:
 
         return final_tags
 
-
     def _save_tags(self):
         """Saves the list back to tags.json."""
-        with open(self.tags_path, 'w', encoding='utf-8') as file:
+        with open(self.tags_path, "w", encoding="utf-8") as file:
             json.dump(self.tags_list, file, indent=2)
 
 
@@ -344,7 +366,6 @@ class TextEntry:
         self.project_path = project_path
         self.log_path = path.join(project_path, research_log)
         self.tags_manager = tags_manager
-
 
     def _capture_img(self) -> Image.Image | None:
         """Prompt user to take a screenshot.  Image in clipboard will be processed."""
@@ -357,20 +378,21 @@ class TextEntry:
             print(">>>  [C]ancel text entry.")
 
             user_input = input(">>> ").strip().upper()
-            if user_input=='E': extract_img = True
-            if user_input=='C':
+            if user_input == "E":
+                extract_img = True
+            if user_input == "C":
                 display_message("WARN", "Text entry cancelled.")
                 return None
 
         try:
-            img = ImageGrab.grabclipboard() # Pull the image from the system clipboard.
+            img = ImageGrab.grabclipboard()  # Pull the image from the system clipboard.
 
             if isinstance(img, Image.Image):
                 display_message("INFO", "Image retrieved from clipboard.")
                 return img
             elif img is None:
                 display_message("WARN", "Clipboard is empty.")
-            elif isinstance(img, list): # Case when files are copied
+            elif isinstance(img, list):  # Case when files are copied
                 display_message("WARN", "Clipboard contains files.")
             else:
                 display_message("WARN", "Clipboard content is not a valid format.")
@@ -381,8 +403,7 @@ class TextEntry:
             display_message("WARN", "Error accessing clipboard.", f"{e}")
             return None
 
-
-    def _extract_text(self, img, lang='eng') -> str:
+    def _extract_text(self, img, lang="eng") -> str:
         """
         Extract contents from the snipped image.
         FUTURE formatting detection; boldface, italics, variable font face
@@ -394,18 +415,20 @@ class TextEntry:
             display_message("WARN", "OCR text extraction failed.", f"{e}")
             return ""
 
-
     def capture_entry(self):
         """The main workflow for capturing a text entry"""
         print("\n>>> Create new text entry ...")
 
-        title, source, notes, entry_tags = self._capture_meta() # Prompt user for entry metadata.
+        title, source, notes, entry_tags = (
+            self._capture_meta()
+        )  # Prompt user for entry metadata.
         text_detected = False
         content = None
         while not text_detected:
-            img = self._capture_img()   # Take a screen snip, and capture the content.
+            img = self._capture_img()  # Take a screen snip, and capture the content.
 
-            if not img: return False    # Either user cancelled, no image in clipboard
+            if not img:
+                return False  # Either user cancelled, no image in clipboard
 
             content = self._extract_text(img)
 
@@ -413,41 +436,43 @@ class TextEntry:
                 display_message("WARN", "No text detected.")
 
                 retry_snip = None
-                while retry_snip not in ['R', 'C']:
+                while retry_snip not in ["R", "C"]:
                     print("\n>>> Select an option to continue :")
                     print(">>>  [R]etry taking a screenshot.")
                     print(">>>  [C]ancel text entry.")
 
                     retry_snip = input("\n>>> ").strip().upper()
 
-                    if retry_snip=='R':
+                    if retry_snip == "R":
                         display_message("INFO", "Retry snipping.")
-                    elif retry_snip=='C':
+                    elif retry_snip == "C":
                         display_message("WARN", "Text entry cancelled.")
                         return False
                     else:
-                        display_message("WARN", "Enter one of the options [\"R\", \"C\"].")
+                        display_message("WARN", 'Enter one of the options ["R", "C"].')
 
             display_message("INFO", "Text entry captured.")
             print(f"<=> CONTENT :\n{content}")
 
             save_entry = None
-            while save_entry not in ['S', 'E']:
-                save_entry = input("\n>>> [S]ave entry to file, or [E]dit text entry ...")
-                if save_entry=='E':
+            while save_entry not in ["S", "E"]:
+                save_entry = input(
+                    "\n>>> [S]ave entry to file, or [E]dit text entry ..."
+                )
+                if save_entry == "E":
                     # self._edit_detected_text()
                     print("\n>>> Enter revised text entry ...")
                     content = input(">>> ").strip()
-                elif save_entry=='S': text_detected = True
-                else: display_message("WARN", "Enter one of the options [\"S\", \"E\"].")
+                elif save_entry == "S":
+                    text_detected = True
+                else:
+                    display_message("WARN", 'Enter one of the options ["S", "E"].')
 
         return self._save_to_log(title, content, source, entry_tags, notes)
-
 
     # FUTURE include a method to allow user edit a prefilled environment with the detected text.
     # def _edit_detected_text(self):
     #     pass
-
 
     def _capture_meta(self):
         """Capture metadata."""
@@ -467,7 +492,6 @@ class TextEntry:
 
         return title, source, notes, entry_tags
 
-
     def _save_to_log(self, title, content, source, entry_tags, notes):
         entry = {
             "type": "text",
@@ -476,7 +500,7 @@ class TextEntry:
             "content": content,
             "source": source,
             "tags": entry_tags,
-            "notes": notes
+            "notes": notes,
         }
 
         try:
@@ -484,7 +508,7 @@ class TextEntry:
 
             # Check if research_log file exists; otherwise create.  Expected that file already exists.
             if path.exists(self.log_path):
-                with open(self.log_path, 'r', encoding='utf-8') as log_file:
+                with open(self.log_path, "r", encoding="utf-8") as log_file:
                     try:
                         data = json.load(log_file)
                     except json.JSONDecodeError:
@@ -492,7 +516,7 @@ class TextEntry:
 
             data.append(entry)
 
-            with open(self.log_path, 'w', encoding='utf-8') as log_file:
+            with open(self.log_path, "w", encoding="utf-8") as log_file:
                 json.dump(data, log_file, indent=2, ensure_ascii=False)
 
             display_message("INFO", "Entry added to log.")
@@ -501,4 +525,3 @@ class TextEntry:
         except Exception as e:
             display_message("WARN", "Could not save entry.", str(e))
             return False
-
