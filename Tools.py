@@ -4,12 +4,11 @@ import json
 import os
 import sys
 from os import path
-from pickle import TRUE
 
 import pytesseract
 from PIL import Image, ImageGrab
 
-from lib import display_menu, display_message, display_path_desc, identify_path
+from lib import display_message, display_path_desc, identify_path
 
 # Class variables :
 registry_name = "registry.json"  # JSON log of projects; list of objects
