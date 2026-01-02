@@ -117,3 +117,5 @@ Example :
 2. [ ] Detect, store text formatting in markdown.
 3. [ ] Allow user to edit OCR-captured text; in text editor, or in dedicated UI.
 4. [ ] User-set OCR language setting.
+5. [ ] Allow user-specified OCR engine configuration for each entry; psm, oem.
+6. [ ] OCR-captured text clean up.

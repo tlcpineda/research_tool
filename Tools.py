@@ -7,7 +7,7 @@ from datetime import timezone as tz
 from os import path
 
 import pytesseract
-from PIL import Image, ImageGrab
+from PIL import Image, ImageFilter, ImageGrab, ImageOps, ImageStat
 
 from lib import display_message, display_path_desc, identify_path
 
@@ -111,7 +111,7 @@ class RegistryManager:
         return ocr_path
 
     def _identify_ocr_path(self) -> str:
-        print("\n>>> Locate Tesseract Executable File ...")
+        print("\n>>> Locate Tesseract Executable File ... ")
         path_input = identify_path("file", "exe")
         norm_path = path.normpath(path_input)
 
@@ -265,6 +265,8 @@ class TagManager:
             if line.strip():
                 print(line)
 
+        print("=" * 100)
+
     def resolve_tags(self, user_input):
         """
         Maps numeric input to existing tags or adds new string tags.
@@ -317,6 +319,9 @@ class TagManager:
                 # Take first word of the raw string, and strip punctuations.
                 clean_word = clean_item(item.split()[0])
 
+                if clean_word.isdigit():
+                    clean_word = f"<{clean_word}>"
+
                 if not clean_word:
                     continue
                 tag_name = clean_word.upper()
@@ -348,18 +353,21 @@ class TextEntry:
         """
         Extract contents from the snipped image.
         """
+        img = self._preprocess_for_ocr(img)
+
         try:
             text = pytesseract.image_to_string(
                 img, lang=lang, config=r"--oem 3 --psm 3"
             )
-            return text.strip(), lang
+
+            return self._clean_up_text(text), lang
         except Exception as e:
             display_message("WARN", "OCR text extraction failed.", f"{e}")
             return "", lang
 
     def capture_entry(self):
         """The main workflow for capturing a text entry"""
-        print("\n>>> Create new text entry ...")
+        print("\n>>> Create new text entry ... ")
 
         # Prompt user for entry metadata.
         metadata = _capture_meta(self.tags_manager)
@@ -399,7 +407,7 @@ class TextEntry:
             save_entry = None
             while save_entry not in ["S", "E"]:
                 save_entry = (
-                    input("\n>>> [S]ave entry to file, or [E]dit text entry ...")
+                    input("\n>>> [S]ave entry to file, or [E]dit text entry ... ")
                     .strip()
                     .upper()
                 )
@@ -416,10 +424,32 @@ class TextEntry:
 
     # FUTURE method to allow user edit a prefilled environment with the detected text; using notepad or similar
     def _edit_text(self):
-        print("\n>>> Enter revised text entry ...")
+        print("\n>>> Enter revised text entry ... ")
         content = input(">>> ").strip()
 
         return content
+
+    def _preprocess_for_ocr(self, img):
+        img = img.convert("L")  # Convert to grayscale ("L").
+
+        # Invert colours when in Dark Mode.
+        stat = ImageStat.Stat(img)
+        if stat.mean[0] < 120:
+            img = ImageOps.invert(img)
+
+        # Resize image by scale, rs.
+        w, h = img.size
+        rs = 3
+        img = img.resize((w * rs, h * rs), resample=Image.Resampling.LANCZOS)
+
+        img = img.filter(ImageFilter.SHARPEN)
+        img = img.point(lambda p: p > 145 and 255)
+
+        return img
+
+    # FUTURE Implement text clean up; unnecessary line-breaks, numbered/bullet lists.
+    def _clean_up_text(self, text):
+        return text.strip()
 
 
 def _set_timestamp() -> str:
@@ -504,7 +534,7 @@ def _compile_entry(entry_type, content, lang, metadata) -> dict:
 def _load_log(file_path):
     """Load contents of log file, or returns an empty list if not found."""
     if path.exists(file_path):
-        with open(file_path, "r") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             try:
                 return json.load(file)
             except json.decoder.JSONDecodeError:
