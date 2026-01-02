@@ -159,17 +159,18 @@ class RegistryManager:
         :return: None
         """
         abs_path = path.abspath(project_path)
+        formatted_path = abs_path if os.sep == "/" else abs_path.replace(os.sep, "/")
 
         # Check for duplicate paths.
         for proj in self.projects:
-            if proj["path"] == abs_path:
+            if proj["path"] == formatted_path:
                 display_message("WARN", "Project already exists in registry.")
                 return False
 
         self.projects.append(
             {
                 "name": name,
-                "path": abs_path if os.sep == "/" else abs_path.replace(os.sep, "/"),
+                "path": formatted_path,
                 "lang": lang,
                 "created": _set_timestamp(),
             }
@@ -343,7 +344,7 @@ class TextEntry:
         self.log = _load_log(self.log_path)
 
     # FUTURE formatting detection; boldface, italics, variable font face
-    def _extract_text(self, img, lang="eng") -> str:
+    def _extract_text(self, img, lang="eng") -> tuple:
         """
         Extract contents from the snipped image.
         """
@@ -351,10 +352,10 @@ class TextEntry:
             text = pytesseract.image_to_string(
                 img, lang=lang, config=r"--oem 3 --psm 3"
             )
-            return text.strip()
+            return text.strip(), lang
         except Exception as e:
             display_message("WARN", "OCR text extraction failed.", f"{e}")
-            return ""
+            return "", lang
 
     def capture_entry(self):
         """The main workflow for capturing a text entry"""
@@ -364,13 +365,14 @@ class TextEntry:
         metadata = _capture_meta(self.tags_manager)
         text_detected = False
         content = None
+        lang = None
         while not text_detected:
             img = _capture_img("text")  # Take a screen snip, and capture the content.
 
             if not img:
                 return False  # Either user cancelled, no image in clipboard
 
-            content = self._extract_text(img)
+            content, lang = self._extract_text(img)
 
             if not content:
                 display_message("WARN", "No text detected.")
@@ -409,7 +411,7 @@ class TextEntry:
                 else:
                     display_message("WARN", 'Enter one of the options ["S", "E"].')
 
-        self.log.append(_compile_entry("text", content, metadata))
+        self.log.append(_compile_entry("text", content, lang, metadata))
         return _save_to_log(self.log_path, self.log)
 
     # FUTURE method to allow user edit a prefilled environment with the detected text; using notepad or similar
@@ -483,16 +485,17 @@ def _capture_meta(tags_manager):
     return title, source, notes, entry_tags
 
 
-def _compile_entry(entry_type, content, metadata) -> dict:
+def _compile_entry(entry_type, content, lang, metadata) -> dict:
     title, source, notes, entry_tags = metadata
     entry = {
         "type": entry_type,
-        "date": _set_timestamp(),
+        "created": _set_timestamp(),
         "title": title,
         "content": content,
         "source": source,
         "tags": entry_tags,
         "notes": notes,
+        "lang": lang,
     }
 
     return entry
@@ -512,21 +515,21 @@ def _load_log(file_path):
 
 def _save_to_log(log_path, data):
     """Helper function to save data to specified log file."""
-
-    # Create a temp file as back up during saving process.
+    # Create a temp file, in case of fatal error during write process.
     temp_path = log_path + ".tmp"
 
     try:
         with open(temp_path, "w", encoding="utf-8") as log_file:
             json.dump(data, log_file, indent=2, ensure_ascii=False)
 
-        # Replace the official file, but the temp file.
+        # Replace the official file, by the temp file.
         os.replace(temp_path, log_path)
-        display_message("INFO", "New entry added to log.")
+        display_message("INFO", f'New entry added to "{path.basename(log_path)}".')
         return True
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-        display_message("WARN", f"File save failed :\n{log_path}", f"{e}")
+        display_message("WARN", "File save failed :", f"{e}")
+        display_path_desc(log_path, "file")
         return False
