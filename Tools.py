@@ -21,9 +21,8 @@ paths_csv = "paths.csv"  # The CSV file containing the path to tesseract.exe; in
 
 class RegistryManager:
     def __init__(self):
-        current_dir = path.abspath(
-            path.dirname(__file__)
-        )  # Default running as a py script
+        # Default running as a py script
+        current_dir = path.abspath(path.dirname(__file__))
 
         # Redefine if run as executable file.
         if getattr(sys, "frozen", False):
@@ -42,21 +41,14 @@ class RegistryManager:
         if not path.exists(self.user_data_path):
             os.makedirs(self.user_data_path)
 
-        self.paths_csv = path.join(
-            self.user_data_path, paths_csv
-        )  # Define path to paths.csv file.
-        self.registry_path = path.join(
-            self.user_data_path, registry_name
-        )  # Create registry.json file
+        self.paths_csv = path.join(self.user_data_path, paths_csv)
+        self.registry_path = path.join(self.user_data_path, registry_name)
 
         self._check_paths_file()  # Ensure that CSV files containing possible locations of tesseract.exe exists.
-        self.tesseract_path = (
-            self._config_tesseract_path()
-        )  # Identify path to tesseract.exe, or ask user to install it.
+        self.tesseract_path = self._config_tesseract_path()
         pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
         self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
-        self.projects = self._load_registry()
-        # self._save_registry()
+        self.projects = _load_log(self.registry_path)
         _save_to_log(self.registry_path, self.projects)
 
     def _config_tesseract_path(self):
@@ -158,22 +150,6 @@ class RegistryManager:
                 writer = csv.writer(csvfile)
                 writer.writerows(paths)
 
-    def _load_registry(self):
-        """Loads registry JSON file, or returns an empty list if not found."""
-        if path.exists(self.registry_path):
-            with open(self.registry_path, "r") as file:
-                try:
-                    return json.load(file)
-                except json.decoder.JSONDecodeError:
-                    return []
-
-        return []
-
-    # def _save_registry(self):
-    #     """Saves the current project list to registry JSON file."""
-    #     with open(self.registry_path, "w") as file:
-    #         json.dump(self.projects, file, indent=2)
-
     def add_project(self, name, project_path) -> bool:
         """
         Adds a new project to the registry.
@@ -195,8 +171,6 @@ class RegistryManager:
                 "path": abs_path if os.sep == "/" else abs_path.replace(os.sep, "/"),
             }
         )
-
-        # self._save_registry()
         _save_to_log(self.registry_path, self.projects)
 
         display_message("INFO", f'Project "{name}" added to registry.')
@@ -247,18 +221,7 @@ class RegistryManager:
 class TagManager:
     def __init__(self, project_path) -> None:
         self.tags_path = path.normpath(path.join(project_path, tags))
-        self.tags_list = self._load_tags()
-
-    def _load_tags(self):
-        """Load the JSON array as a Python list."""
-        if path.exists(self.tags_path):
-            with open(self.tags_path, "r") as file:
-                try:
-                    return json.load(file)
-                except json.decoder.JSONDecodeError:
-                    return []
-
-        return []
+        self.tags_list = _load_log(self.tags_path)
 
     def list_tags(self):
         """List tags currently used in the project."""
@@ -353,15 +316,9 @@ class TagManager:
                 final_tags.append(tag_name)
 
         if updated:
-            # self._save_tags()
             _save_to_log(self.tags_path, self.tags_list)
 
         return final_tags
-
-    # def _save_tags(self):
-    #     """Saves the list back to tags.json."""
-    #     with open(self.tags_path, "w", encoding="utf-8") as file:
-    #         json.dump(self.tags_list, file, indent=2)
 
 
 class TextEntry:
@@ -370,42 +327,7 @@ class TextEntry:
         self.project_path = project_path
         self.log_path = path.join(project_path, research_log)
         self.tags_manager = tags_manager
-
-    # def _capture_img(self) -> Image.Image | None:
-    #     """Prompt user to take a screenshot.  Image in clipboard will be processed."""
-    #     print("\n<=> Use preferred snipping tool to copy image to clipboard.")
-
-    #     extract_img = False
-    #     while not extract_img:
-    #         print("\n>>> Select an option to proceed :")
-    #         print(">>>  [E]xtract text from image in clipboard.")
-    #         print(">>>  [C]ancel text entry.")
-
-    #         user_input = input(">>> ").strip().upper()
-    #         if user_input == "E":
-    #             extract_img = True
-    #         if user_input == "C":
-    #             display_message("WARN", "Text entry cancelled.")
-    #             return None
-
-    #     try:
-    #         img = ImageGrab.grabclipboard()  # Pull the image from the system clipboard.
-
-    #         if isinstance(img, Image.Image):
-    #             display_message("INFO", "Image retrieved from clipboard.")
-    #             return img
-    #         elif img is None:
-    #             display_message("WARN", "Clipboard is empty.")
-    #         elif isinstance(img, list):  # Case when files are copied
-    #             display_message("WARN", "Clipboard contains files.")
-    #         else:
-    #             display_message("WARN", "Clipboard content is not a valid format.")
-
-    #         return None
-
-    #     except Exception as e:
-    #         display_message("WARN", "Error accessing clipboard.", f"{e}")
-    #         return None
+        self.log = _load_log(self.log_path)
 
     def _extract_text(self, img, lang="eng") -> str:
         """
@@ -483,37 +405,6 @@ class TextEntry:
     # def _edit_detected_text(self):
     #     pass
 
-    # def _capture_meta(self):
-    #     """Capture metadata."""
-    #     tags_manager = self.tags_manager
-    #     title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
-    #     source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
-    #     notes = input("\n>>> Notes : ").strip()
-
-    #     # Affix tags.
-    #     if tags_manager:
-    #         tags_manager.list_tags()
-    #         tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
-    #     else:
-    #         tag_input = input("\n>>> Enter tags (comma separated) : ")
-
-    #     entry_tags = tags_manager.resolve_tags(tag_input)
-
-    #     return title, source, notes, entry_tags
-
-    # def _save_entry(self, title, content, source, entry_tags, notes):
-    #     entry = {
-    #         "type": "text",
-    #         "date": f"{datetime.datetime.now()}Z",
-    #         "title": title,
-    #         "content": content,
-    #         "source": source,
-    #         "tags": entry_tags,
-    #         "notes": notes,
-    #     }
-
-    #     _save_to_log(self.log_path, entry)
-
 
 def _capture_img() -> Image.Image | None:
     """Prompt user to take a screenshot.  Image in clipboard will be processed."""
@@ -583,6 +474,18 @@ def _compile_entry(entry_type, content, metadata):
     }
 
     return entry
+
+
+def _load_log(file_path):
+    """Load contents of log file, or returns an empty list if not found."""
+    if path.exists(file_path):
+        with open(file_path, "r") as file:
+            try:
+                return json.load(file)
+            except json.decoder.JSONDecodeError:
+                return []
+
+    return []
 
 
 def _save_to_log(log_path, data):
