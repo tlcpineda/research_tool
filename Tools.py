@@ -1,8 +1,9 @@
 import csv
-import datetime
 import json
 import os
 import sys
+from datetime import datetime as dt
+from datetime import timezone as tz
 from os import path
 
 import pytesseract
@@ -229,13 +230,12 @@ class TagManager:
             display_message("INFO", "No tags currently defined.")
             return
 
+        # Determine number of rows for layout; with the number of columns limited to 4
         num_tags = len(self.tags_list)
         num_cols = 4
         col_width = 25
         text_limit = 20
-        rows = (
-            num_tags + num_cols - 1
-        ) // num_cols  # Determine number of rows for layout.
+        rows = (num_tags + num_cols - 1) // num_cols
 
         print("\n<=> Available tags :")
 
@@ -292,12 +292,19 @@ class TagManager:
             # Check for brackets.
             if "<" in item and ">" in item:
                 # Extract content between brackets.
-                content = item[item.find("<") : item.find(">")]
+                content = item[item.find("<") + 1 : item.find(">")]
 
                 # Clean up apparent multi-word entry, with extraneous punctuations.
                 # Strip off punctuations, and get the first partition that is purely numeric.
-                clean_inner = clean_item(content)
-                tag_name = f"<{[n for n in clean_inner.split() if n.isdigit()][0]}>"
+                split_list = [n for n in clean_item(content).split() if n.isdigit()]
+
+                if len(split_list) > 0:
+                    tag_name = f"<{split_list[0]}>"
+                else:
+                    tag_name = "<000>"
+                    display_message(
+                        "WARN", f"No digits found in {item}.  Retagged as <000>"
+                    )
 
             else:
                 # Take first word of the raw string, and strip punctuations.
@@ -348,11 +355,11 @@ class TextEntry:
         print("\n>>> Create new text entry ...")
 
         # Prompt user for entry metadata.
-        title, source, notes, entry_tags = _capture_meta(self.tags_manager)
+        metadata = _capture_meta(self.tags_manager)
         text_detected = False
         content = None
         while not text_detected:
-            img = _capture_img()  # Take a screen snip, and capture the content.
+            img = _capture_img("text")  # Take a screen snip, and capture the content.
 
             if not img:
                 return False  # Either user cancelled, no image in clipboard
@@ -383,44 +390,48 @@ class TextEntry:
 
             save_entry = None
             while save_entry not in ["S", "E"]:
-                save_entry = input(
-                    "\n>>> [S]ave entry to file, or [E]dit text entry ..."
+                save_entry = (
+                    input("\n>>> [S]ave entry to file, or [E]dit text entry ...")
+                    .strip()
+                    .upper()
                 )
                 if save_entry == "E":
-                    # self._edit_detected_text()
-                    print("\n>>> Enter revised text entry ...")
-                    content = input(">>> ").strip()
+                    content = self._edit_text()
                     text_detected = True
                 elif save_entry == "S":
                     text_detected = True
                 else:
                     display_message("WARN", 'Enter one of the options ["S", "E"].')
 
-        return _save_to_log(
-            self.log_path,
-            _compile_entry("text", content, _capture_meta(self.tags_manager)),
-        )
+        self.log.append(_compile_entry("text", content, metadata))
+        return _save_to_log(self.log_path, self.log)
 
-    # FUTURE include a method to allow user edit a prefilled environment with the detected text.
-    # def _edit_detected_text(self):
-    #     pass
+    # FUTURE method to allow user edit a prefilled environment with the detected text; using notepad or similar
+    def _edit_text(self):
+        print("\n>>> Enter revised text entry ...")
+        content = input(">>> ").strip()
+
+        return content
 
 
-def _capture_img() -> Image.Image | None:
+def _capture_img(entry_type: str) -> Image.Image | None:
     """Prompt user to take a screenshot.  Image in clipboard will be processed."""
     print("\n<=> Use preferred snipping tool to copy image to clipboard.")
 
     extract_img = False
     while not extract_img:
         print("\n>>> Select an option to proceed :")
-        print(">>>  [E]xtract text from image in clipboard.")
-        print(">>>  [C]ancel text entry.")
+        print(f">>>  [E]xtract {entry_type} from image in clipboard.")
+        print(f">>>  [C]ancel {entry_type} entry.")
 
         user_input = input(">>> ").strip().upper()
         if user_input == "E":
             extract_img = True
         if user_input == "C":
-            display_message("WARN", "Text entry cancelled.")
+            display_message(
+                "WARN",
+                f"{entry_type.title()} entry cancelled.",
+            )
             return None
 
     try:
@@ -452,20 +463,21 @@ def _capture_meta(tags_manager):
     # Affix tags.
     if tags_manager:
         tags_manager.list_tags()
-        tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
-    else:
-        tag_input = input("\n>>> Enter tags (comma separated) : ")
 
+    print(">>> Limit new tags to single word entries.")
+    print(">>> Enclose numeric tags in brackes <>; eg. <1812>")
+
+    tag_input = input(">>> Enter tags (comma separated) : ")
     entry_tags = tags_manager.resolve_tags(tag_input)
 
     return title, source, notes, entry_tags
 
 
 def _compile_entry(entry_type, content, metadata):
-    title, source, entry_tags, notes = metadata
+    title, source, notes, entry_tags = metadata
     entry = {
         "type": entry_type,
-        "date": f"{datetime.datetime.now()}Z",
+        "date": f"{dt.now(tz.utc).isoformat()}",
         "title": title,
         "content": content,
         "source": source,
@@ -506,5 +518,5 @@ def _save_to_log(log_path, data):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-        display_message("WARN", f"File save failed :\n{log_path}, f{e}")
+        display_message("WARN", f"File save failed :\n{log_path}", f"{e}")
         return False
