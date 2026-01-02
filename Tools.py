@@ -50,7 +50,7 @@ class RegistryManager:
         pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
         self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
         self.projects = _load_log(self.registry_path)
-        _save_to_log(self.registry_path, self.projects)
+        # _save_to_log(self.registry_path, self.projects)
 
     def _config_tesseract_path(self):
         """Determine the path to the tesseract executable."""
@@ -151,7 +151,7 @@ class RegistryManager:
                 writer = csv.writer(csvfile)
                 writer.writerows(paths)
 
-    def add_project(self, name, project_path) -> bool:
+    def add_project(self, name, project_path, lang="eng") -> bool:
         """
         Adds a new project to the registry.
         :param name: The name of the project; typically the name of the research project.
@@ -170,42 +170,48 @@ class RegistryManager:
             {
                 "name": name,
                 "path": abs_path if os.sep == "/" else abs_path.replace(os.sep, "/"),
+                "lang": lang,
+                "created": _set_timestamp(),
             }
         )
         _save_to_log(self.registry_path, self.projects)
 
         display_message("INFO", f'Project "{name}" added to registry.')
 
-        self.initialise_project(len(self.projects))
-        display_message("INFO", f'Folder "{name}" initialised.')
+        if self.initialise_project(len(self.projects)):
+            self.initialise_project(len(self.projects))
+            return True
 
         return True
 
     def initialise_project(self, project_number) -> bool:
         """ "
         Check if the project exists in the registry, then initialise project files.
-        :param project_number: The project number corresponding to the project name.
-        :return:
+        :param project_number: The project number corresponding to the project name
+        :return: Whether project folder creation, and initilisation was successful
         """
         if not (1 <= project_number <= len(self.projects)):
             display_message("WARN", "Project number out of range.")
             return False
 
+        project_name = self.projects[project_number - 1]["name"]
         project_path = self.projects[project_number - 1]["path"]
 
-        if not path.exists(project_path):
-            display_message("WARN", "Project path not found.")
-            return False
-
         try:
-            # Create 'assets' subfolder.
+            # # Create project folder and assets subfolder.
+            # if not path.exists(project_path):
+            #     os.mkdir(project_path)
+            #     display_message("INFO", f'Project folder "{project_name}" created.')
+            #     return False
+
             asset_path = path.join(project_path, "assets")
             if not path.exists(asset_path):
                 os.makedirs(asset_path)
+                display_message("INFO", f'Project "{project_name}" initialised.')
+                display_path_desc(project_path, "folder")
 
-            log_files = [research_log, tags]
-            for name in log_files:
-                file_path = path.join(project_path, name)
+            for log_name in [research_log, tags]:
+                file_path = path.join(project_path, log_name)
 
                 if not path.exists(file_path):
                     with open(file_path, "w") as file:
@@ -214,7 +220,7 @@ class RegistryManager:
             return True
 
         except Exception as e:
-            display_message("WARN", "Error initialising project.", f"{e}")
+            display_message("WARN", "Project initialising failed.", f"{e}")
 
             return False
 
@@ -336,10 +342,10 @@ class TextEntry:
         self.tags_manager = tags_manager
         self.log = _load_log(self.log_path)
 
+    # FUTURE formatting detection; boldface, italics, variable font face
     def _extract_text(self, img, lang="eng") -> str:
         """
         Extract contents from the snipped image.
-        FUTURE formatting detection; boldface, italics, variable font face
         """
         try:
             text = pytesseract.image_to_string(
@@ -414,6 +420,10 @@ class TextEntry:
         return content
 
 
+def _set_timestamp() -> str:
+    return dt.now(tz.utc).isoformat()
+
+
 def _capture_img(entry_type: str) -> Image.Image | None:
     """Prompt user to take a screenshot.  Image in clipboard will be processed."""
     print("\n<=> Use preferred snipping tool to copy image to clipboard.")
@@ -473,11 +483,11 @@ def _capture_meta(tags_manager):
     return title, source, notes, entry_tags
 
 
-def _compile_entry(entry_type, content, metadata):
+def _compile_entry(entry_type, content, metadata) -> dict:
     title, source, notes, entry_tags = metadata
     entry = {
         "type": entry_type,
-        "date": f"{dt.now(tz.utc).isoformat()}",
+        "date": _set_timestamp(),
         "title": title,
         "content": content,
         "source": source,
@@ -512,7 +522,7 @@ def _save_to_log(log_path, data):
 
         # Replace the official file, but the temp file.
         os.replace(temp_path, log_path)
-        display_message("INFO", "New entry added to log")
+        display_message("INFO", "New entry added to log.")
         return True
     except Exception as e:
         if os.path.exists(temp_path):
