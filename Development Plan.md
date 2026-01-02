@@ -23,11 +23,11 @@ Example :
 
 ```
 {
-    "name": "Legal Research on the Impact of Government Subsidies 2025",
-    "path": "C:/Users/Name/Documents/History Project",
-    "lang": "fra+eng+deu",
-    "created": "2025-10-25T05:05:35.000000Z"
-  }
+  "name": "Legal Research on the Impact of Government Subsidies 2025",
+  "path": "C:/Users/Name/Documents/History Project",
+  "lang": "fra+eng+deu",
+  "created": "2025-10-25T05:05:35.000000+00:00"
+}
 ```
 
 - **name** : (User) The name of the project
@@ -49,7 +49,8 @@ Example :
   "notes": "Found this particularly useful for the chapter on steam power."
   "tags": ["HISTORY", "ECONOMICS", "<1760>", "<1840>"],
   "content": "The transition to new manufacturing processes in Great Britain, continental Europe and the United States, in the period from about 1760 to sometime between 1820 and 1840.",
-  "date": "2025-12-30T10:15:30.005225Z",
+  "lang": "eng",
+  "created": "2025-10-25T05:05:35.000000+00:00",
 }
 ```
 
@@ -63,7 +64,8 @@ Example :
     - for text: Raw string (with embedded formatting) of the OCR output;
     - for table: 2D Array (List of Lists); and,
     - for image: String path to the saved .png/.jpg file.
-- **date** : (System) ISO 8601 UTC timestamp.
+- **lang** : (System/User) Language to be used by OCR engine.
+- **created** : (System) ISO 8601 UTC timestamp.
 - ~~**schema_version** : "1.0"~~
 
 ---
@@ -108,3 +110,10 @@ Example :
 5. Script launches native Snipping Tool.
 6. User captures area; Snip goes to clipboard.
 7. Script detects clipboard content, processes it, and appends to 'research_log.json'.
+
+
+## Future Development
+1. [ ] Function UI
+2. [ ] Detect, store text formatting in markdown.
+3. [ ] Allow user to edit OCR-captured text; in text editor, or in dedicated UI.
+4. [ ] User-set OCR language setting.
