@@ -4,11 +4,12 @@ import json
 import os
 import sys
 from os import path
+from pickle import TRUE
 
 import pytesseract
 from PIL import Image, ImageGrab
 
-from lib import display_message, display_path_desc, identify_path
+from lib import display_menu, display_message, display_path_desc, identify_path
 
 # Class variables :
 registry_name = "registry.json"  # JSON log of projects; list of objects
@@ -56,7 +57,8 @@ class RegistryManager:
         pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
         self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
         self.projects = self._load_registry()
-        self._save_registry()
+        # self._save_registry()
+        _save_to_log(self.registry_path, self.projects)
 
     def _config_tesseract_path(self):
         """Determine the path to the tesseract executable."""
@@ -168,10 +170,10 @@ class RegistryManager:
 
         return []
 
-    def _save_registry(self):
-        """Saves the current project list to registry JSON file."""
-        with open(self.registry_path, "w") as file:
-            json.dump(self.projects, file, indent=2)
+    # def _save_registry(self):
+    #     """Saves the current project list to registry JSON file."""
+    #     with open(self.registry_path, "w") as file:
+    #         json.dump(self.projects, file, indent=2)
 
     def add_project(self, name, project_path) -> bool:
         """
@@ -195,7 +197,9 @@ class RegistryManager:
             }
         )
 
-        self._save_registry()
+        # self._save_registry()
+        _save_to_log(self.registry_path, self.projects)
+
         display_message("INFO", f'Project "{name}" added to registry.')
 
         self.initialise_project(len(self.projects))
@@ -350,14 +354,15 @@ class TagManager:
                 final_tags.append(tag_name)
 
         if updated:
-            self._save_tags()
+            # self._save_tags()
+            _save_to_log(self.tags_path, self.tags_list)
 
         return final_tags
 
-    def _save_tags(self):
-        """Saves the list back to tags.json."""
-        with open(self.tags_path, "w", encoding="utf-8") as file:
-            json.dump(self.tags_list, file, indent=2)
+    # def _save_tags(self):
+    #     """Saves the list back to tags.json."""
+    #     with open(self.tags_path, "w", encoding="utf-8") as file:
+    #         json.dump(self.tags_list, file, indent=2)
 
 
 class TextEntry:
@@ -367,41 +372,41 @@ class TextEntry:
         self.log_path = path.join(project_path, research_log)
         self.tags_manager = tags_manager
 
-    def _capture_img(self) -> Image.Image | None:
-        """Prompt user to take a screenshot.  Image in clipboard will be processed."""
-        print("\n<=> Use preferred snipping tool to copy image to clipboard.")
+    # def _capture_img(self) -> Image.Image | None:
+    #     """Prompt user to take a screenshot.  Image in clipboard will be processed."""
+    #     print("\n<=> Use preferred snipping tool to copy image to clipboard.")
 
-        extract_img = False
-        while not extract_img:
-            print("\n>>> Select an option to proceed :")
-            print(">>>  [E]xtract text from image in clipboard.")
-            print(">>>  [C]ancel text entry.")
+    #     extract_img = False
+    #     while not extract_img:
+    #         print("\n>>> Select an option to proceed :")
+    #         print(">>>  [E]xtract text from image in clipboard.")
+    #         print(">>>  [C]ancel text entry.")
 
-            user_input = input(">>> ").strip().upper()
-            if user_input == "E":
-                extract_img = True
-            if user_input == "C":
-                display_message("WARN", "Text entry cancelled.")
-                return None
+    #         user_input = input(">>> ").strip().upper()
+    #         if user_input == "E":
+    #             extract_img = True
+    #         if user_input == "C":
+    #             display_message("WARN", "Text entry cancelled.")
+    #             return None
 
-        try:
-            img = ImageGrab.grabclipboard()  # Pull the image from the system clipboard.
+    #     try:
+    #         img = ImageGrab.grabclipboard()  # Pull the image from the system clipboard.
 
-            if isinstance(img, Image.Image):
-                display_message("INFO", "Image retrieved from clipboard.")
-                return img
-            elif img is None:
-                display_message("WARN", "Clipboard is empty.")
-            elif isinstance(img, list):  # Case when files are copied
-                display_message("WARN", "Clipboard contains files.")
-            else:
-                display_message("WARN", "Clipboard content is not a valid format.")
+    #         if isinstance(img, Image.Image):
+    #             display_message("INFO", "Image retrieved from clipboard.")
+    #             return img
+    #         elif img is None:
+    #             display_message("WARN", "Clipboard is empty.")
+    #         elif isinstance(img, list):  # Case when files are copied
+    #             display_message("WARN", "Clipboard contains files.")
+    #         else:
+    #             display_message("WARN", "Clipboard content is not a valid format.")
 
-            return None
+    #         return None
 
-        except Exception as e:
-            display_message("WARN", "Error accessing clipboard.", f"{e}")
-            return None
+    #     except Exception as e:
+    #         display_message("WARN", "Error accessing clipboard.", f"{e}")
+    #         return None
 
     def _extract_text(self, img, lang="eng") -> str:
         """
@@ -409,7 +414,9 @@ class TextEntry:
         FUTURE formatting detection; boldface, italics, variable font face
         """
         try:
-            text = pytesseract.image_to_string(img, lang=lang)
+            text = pytesseract.image_to_string(
+                img, lang=lang, config=r"--oem 3 --psm 3"
+            )
             return text.strip()
         except Exception as e:
             display_message("WARN", "OCR text extraction failed.", f"{e}")
@@ -419,13 +426,12 @@ class TextEntry:
         """The main workflow for capturing a text entry"""
         print("\n>>> Create new text entry ...")
 
-        title, source, notes, entry_tags = (
-            self._capture_meta()
-        )  # Prompt user for entry metadata.
+        # Prompt user for entry metadata.
+        title, source, notes, entry_tags = _capture_meta(self.tags_manager)
         text_detected = False
         content = None
         while not text_detected:
-            img = self._capture_img()  # Take a screen snip, and capture the content.
+            img = _capture_img()  # Take a screen snip, and capture the content.
 
             if not img:
                 return False  # Either user cancelled, no image in clipboard
@@ -463,65 +469,140 @@ class TextEntry:
                     # self._edit_detected_text()
                     print("\n>>> Enter revised text entry ...")
                     content = input(">>> ").strip()
+                    text_detected = True
                 elif save_entry == "S":
                     text_detected = True
                 else:
                     display_message("WARN", 'Enter one of the options ["S", "E"].')
 
-        return self._save_to_log(title, content, source, entry_tags, notes)
+        return _save_to_log(
+            self.log_path,
+            _compile_entry("text", content, _capture_meta(self.tags_manager)),
+        )
 
     # FUTURE include a method to allow user edit a prefilled environment with the detected text.
     # def _edit_detected_text(self):
     #     pass
 
-    def _capture_meta(self):
-        """Capture metadata."""
-        tags_manager = self.tags_manager
-        title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
-        source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
-        notes = input("\n>>> Notes : ").strip()
+    # def _capture_meta(self):
+    #     """Capture metadata."""
+    #     tags_manager = self.tags_manager
+    #     title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
+    #     source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
+    #     notes = input("\n>>> Notes : ").strip()
 
-        # Affix tags.
-        if tags_manager:
-            tags_manager.list_tags()
-            tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
+    #     # Affix tags.
+    #     if tags_manager:
+    #         tags_manager.list_tags()
+    #         tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
+    #     else:
+    #         tag_input = input("\n>>> Enter tags (comma separated) : ")
+
+    #     entry_tags = tags_manager.resolve_tags(tag_input)
+
+    #     return title, source, notes, entry_tags
+
+    # def _save_entry(self, title, content, source, entry_tags, notes):
+    #     entry = {
+    #         "type": "text",
+    #         "date": f"{datetime.datetime.now()}Z",
+    #         "title": title,
+    #         "content": content,
+    #         "source": source,
+    #         "tags": entry_tags,
+    #         "notes": notes,
+    #     }
+
+    #     _save_to_log(self.log_path, entry)
+
+
+def _capture_img() -> Image.Image | None:
+    """Prompt user to take a screenshot.  Image in clipboard will be processed."""
+    print("\n<=> Use preferred snipping tool to copy image to clipboard.")
+
+    extract_img = False
+    while not extract_img:
+        print("\n>>> Select an option to proceed :")
+        print(">>>  [E]xtract text from image in clipboard.")
+        print(">>>  [C]ancel text entry.")
+
+        user_input = input(">>> ").strip().upper()
+        if user_input == "E":
+            extract_img = True
+        if user_input == "C":
+            display_message("WARN", "Text entry cancelled.")
+            return None
+
+    try:
+        img = ImageGrab.grabclipboard()  # Pull the image from the system clipboard.
+
+        if isinstance(img, Image.Image):
+            display_message("INFO", "Image retrieved from clipboard.")
+            return img
+        elif img is None:
+            display_message("WARN", "Clipboard is empty.")
+        elif isinstance(img, list):  # Case when files are copied
+            display_message("WARN", "Clipboard contains files.")
         else:
-            tag_input = input("\n>>> Enter tags (comma separated) : ")
+            display_message("WARN", "Clipboard content is not a valid format.")
 
-        entry_tags = tags_manager.resolve_tags(tag_input)
+        return None
 
-        return title, source, notes, entry_tags
+    except Exception as e:
+        display_message("WARN", "Error accessing clipboard.", f"{e}")
+        return None
 
-    def _save_to_log(self, title, content, source, entry_tags, notes):
-        entry = {
-            "type": "text",
-            "date": f"{datetime.datetime.now()}Z",
-            "title": title,
-            "content": content,
-            "source": source,
-            "tags": entry_tags,
-            "notes": notes,
-        }
 
-        try:
-            data = []
+def _capture_meta(tags_manager):
+    """Capture metadata."""
+    title = input("\n>>> Entry Title : ").strip() or "untitled_entry"
+    source = input("\n>>> Source (URL/Book) : ").strip() or "unidentified_source"
+    notes = input("\n>>> Notes : ").strip()
 
-            # Check if research_log file exists; otherwise create.  Expected that file already exists.
-            if path.exists(self.log_path):
-                with open(self.log_path, "r", encoding="utf-8") as log_file:
-                    try:
-                        data = json.load(log_file)
-                    except json.JSONDecodeError:
-                        data = []
+    # Affix tags.
+    if tags_manager:
+        tags_manager.list_tags()
+        tag_input = input("\n>>> Enter tags (comma separated or numbers) : ")
+    else:
+        tag_input = input("\n>>> Enter tags (comma separated) : ")
 
-            data.append(entry)
+    entry_tags = tags_manager.resolve_tags(tag_input)
 
-            with open(self.log_path, "w", encoding="utf-8") as log_file:
-                json.dump(data, log_file, indent=2, ensure_ascii=False)
+    return title, source, notes, entry_tags
 
-            display_message("INFO", "Entry added to log.")
-            return True
 
-        except Exception as e:
-            display_message("WARN", "Could not save entry.", str(e))
-            return False
+def _compile_entry(entry_type, content, metadata):
+    title, source, entry_tags, notes = metadata
+    entry = {
+        "type": entry_type,
+        "date": f"{datetime.datetime.now()}Z",
+        "title": title,
+        "content": content,
+        "source": source,
+        "tags": entry_tags,
+        "notes": notes,
+    }
+
+    return entry
+
+
+def _save_to_log(log_path, data):
+    """Helper function to save data to specified log file."""
+
+    # Create a temp file as back up during saving process.
+    temp_path = log_path + ".tmp"
+
+    try:
+        with open(temp_path, "w", encoding="utf-8") as log_file:
+            json.dump(data, log_file, indent=2, ensure_ascii=False)
+
+        # Replace the official file, but the temp file.
+        os.replace(temp_path, log_path)
+        display_message("INFO", "New entry added to log")
+        return True
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+        display_message("WARN", f"File save failed :\n{log_path}, f{e}")
+        return False
