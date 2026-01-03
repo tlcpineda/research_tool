@@ -20,37 +20,30 @@ img_folder = "assets"  # Folder name containing the images snipped
 paths_csv = "paths.csv"  # The CSV file containing the path to tesseract.exe; initialised with possible locations.
 
 
-class RegistryManager:
-    def __init__(self):
-        # Default running as a py script
-        current_dir = path.abspath(path.dirname(__file__))
-
-        # Redefine if run as executable file.
-        if getattr(sys, "frozen", False):
-            current_dir = path.dirname(path.abspath(sys.executable))
-
-        # Move one level up if script is in 'dist' folder.
-        self.app_parent = (
-            path.dirname(current_dir)
-            if path.basename(current_dir).lower() == "dist"
-            else current_dir
-        )
-
-        # Set up user_data folder, in app_root.
-        self.user_data_path = path.join(self.app_parent, user_data)
-
-        if not path.exists(self.user_data_path):
-            os.makedirs(self.user_data_path)
-
-        self.paths_csv = path.join(self.user_data_path, paths_csv)
-        self.registry_path = path.join(self.user_data_path, registry_name)
-
-        self._check_paths_file()  # Ensure that CSV files containing possible locations of tesseract.exe exists.
+class OCRManager:
+    def __init__(self, user_data_path) -> None:
+        self.paths_csv = path.join(user_data_path, paths_csv)
+        self._check_paths_file()
         self.tesseract_path = self._config_tesseract_path()
         pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
-        self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
-        self.projects = _load_log(self.registry_path)
-        # _save_to_log(self.registry_path, self.projects)
+        self._clean_up_files_path()
+
+    def _check_paths_file(self):
+        """Creates a default CSV file for paths to be used by Tesseract."""
+        csv_file = self.paths_csv
+
+        if not path.exists(csv_file):
+            paths = [
+                ["C:/Program Files/Tesseract-OCR/tesseract.exe"],
+                ["~/AppData/Local/Tesseract-OCR/tesseract.exe"],
+                ["/usr/homebrew/bin/tesseract"],
+                ["/usr/local/bin/tesseract/"],
+                ["/usr/bin/tesseract/"],
+            ]  # Possible locations of tesseract.exe
+
+            with open(csv_file, "w", newline="", encoding="utf-8") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(paths)
 
     def _config_tesseract_path(self):
         """Determine the path to the tesseract executable."""
@@ -134,22 +127,107 @@ class RegistryManager:
         except Exception as e:
             display_message("WARN", f"{paths_csv} cannot be updated.", f"{e}")
 
-    def _check_paths_file(self):
-        """Creates a default CSV file for paths to be used by Tesseract."""
-        csv_file = self.paths_csv
+    # def _prompt_user_for_path(self):
+    #     display_message("WARN", "Tesseract OCR engine not found.")
 
-        if not path.exists(csv_file):
-            paths = [
-                ["C:/Program Files/Tesseract-OCR/tesseract.exe"],
-                ["~/AppData/Local/Tesseract-OCR/tesseract.exe"],
-                ["/usr/homebrew/bin/tesseract"],
-                ["/usr/local/bin/tesseract/"],
-                ["/usr/bin/tesseract/"],
-            ]  # Possible locations of tesseract.exe
+    #     while True:
+    #         user_input = input("\n>>> [L]ocate path / E[X]it ? ").strip().upper()
+    #         if user_input == "X":
+    #             sys.exit()
+    #         elif user_input == "L":
+    #             print("\n>>> Locate Tesseract Executable File ... ")
+    #             path_input = identify_path("file", "exe")
+    #             norm_path = path.normpath(path_input)
+    #             if path.exists(norm_path):
+    #                 display_message("INFO", "Tesseract engine identified.")
+    #                 return norm_path
+    #             display_message("WARN", "Invalid path.")
 
-            with open(csv_file, "w", newline="", encoding="utf-8") as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(paths)
+    def _preprocess_for_ocr(self, img):
+        img = img.convert("L")  # Convert to grayscale ("L").
+
+        # Invert colours when in Dark Mode.
+        stat = ImageStat.Stat(img)
+        if stat.mean[0] < 120:
+            img = ImageOps.invert(img)
+
+        # Resize image by scale, rs.
+        w, h = img.size
+        rs = 3
+        img = img.resize((w * rs, h * rs), resample=Image.Resampling.LANCZOS)
+
+        img = img.filter(ImageFilter.SHARPEN)
+        img = img.point(lambda p: p > 145 and 255)
+
+        return img
+
+    # FUTURE formatting detection; boldface, italics, variable font face
+    def process_img(self, img, entry_type, lang="eng") -> tuple:
+        """
+        Extract contents from the snipped image.
+        """
+        try:
+            processed_item = img
+
+            if not entry_type == "image":
+                img = self._preprocess_for_ocr(img)
+
+            match entry_type:
+                case "image":
+                    image = ""
+                    processed_item = image
+
+                case "text":
+                    text = pytesseract.image_to_string(
+                        img, lang=lang, config=r"--oem 3 --psm 3"
+                    )
+
+                    processed_item = text
+
+                case "table":
+                    table = ""
+                    processed_item = table
+
+            return processed_item, lang
+
+        except Exception as e:
+            display_message("WARN", "OCR text extraction failed.", f"{e}")
+            return "", lang
+
+
+class RegistryManager:
+    def __init__(self):
+        # Default running as a py script
+        current_dir = path.abspath(path.dirname(__file__))
+
+        # Redefine if run as executable file.
+        if getattr(sys, "frozen", False):
+            current_dir = path.dirname(path.abspath(sys.executable))
+
+        # Move one level up if script is in 'dist' folder.
+        self.app_parent = (
+            path.dirname(current_dir)
+            if path.basename(current_dir).lower() == "dist"
+            else current_dir
+        )
+
+        # Set up user_data folder, in app_root.
+        self.user_data_path = path.join(self.app_parent, user_data)
+
+        if not path.exists(self.user_data_path):
+            os.makedirs(self.user_data_path)
+
+        self.ocr_manager = OCRManager(self.user_data_path)
+
+        # self.paths_csv = path.join(self.user_data_path, paths_csv)
+        self.registry_path = path.join(self.user_data_path, registry_name)
+
+        # self._check_paths_file()  # Ensure that CSV files containing possible locations of tesseract.exe exists.
+        # self.tesseract_path = self._config_tesseract_path()
+        # pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+        # self._clean_up_files_path()  # Wipe CSV file, and save only the correct path.
+        self.projects = _load_log(self.registry_path)
+        # _save_to_log(self.registry_path, self.projects)
 
     def add_project(self, name, project_path, lang="eng") -> bool:
         """
@@ -180,7 +258,6 @@ class RegistryManager:
         display_message("INFO", f'Project "{name}" added to registry.')
 
         if self.initialise_project(len(self.projects)):
-            self.initialise_project(len(self.projects))
             return True
 
         return True
@@ -199,12 +276,7 @@ class RegistryManager:
         project_path = self.projects[project_number - 1]["path"]
 
         try:
-            # # Create project folder and assets subfolder.
-            # if not path.exists(project_path):
-            #     os.mkdir(project_path)
-            #     display_message("INFO", f'Project folder "{project_name}" created.')
-            #     return False
-
+            # Create project folder and assets subfolder.
             asset_path = path.join(project_path, "assets")
             if not path.exists(asset_path):
                 os.makedirs(asset_path)
@@ -341,29 +413,13 @@ class TagManager:
 
 
 class TextEntry:
-    def __init__(self, project_path, tags_manager):
+    def __init__(self, project_path, tags_manager, ocr_manager):
         """Initialise with the path to the active project."""
         self.project_path = project_path
         self.log_path = path.join(project_path, research_log)
         self.tags_manager = tags_manager
+        self.ocr_manager = ocr_manager
         self.log = _load_log(self.log_path)
-
-    # FUTURE formatting detection; boldface, italics, variable font face
-    def _extract_text(self, img, lang="eng") -> tuple:
-        """
-        Extract contents from the snipped image.
-        """
-        img = self._preprocess_for_ocr(img)
-
-        try:
-            text = pytesseract.image_to_string(
-                img, lang=lang, config=r"--oem 3 --psm 3"
-            )
-
-            return self._clean_up_text(text), lang
-        except Exception as e:
-            display_message("WARN", "OCR text extraction failed.", f"{e}")
-            return "", lang
 
     def capture_entry(self):
         """The main workflow for capturing a text entry"""
@@ -380,7 +436,8 @@ class TextEntry:
             if not img:
                 return False  # Either user cancelled, no image in clipboard
 
-            content, lang = self._extract_text(img)
+            content, lang = self.ocr_manager.process_img(img, "text")
+            content = self._clean_up_text(content)
 
             if not content:
                 display_message("WARN", "No text detected.")
@@ -428,24 +485,6 @@ class TextEntry:
         content = input(">>> ").strip()
 
         return content
-
-    def _preprocess_for_ocr(self, img):
-        img = img.convert("L")  # Convert to grayscale ("L").
-
-        # Invert colours when in Dark Mode.
-        stat = ImageStat.Stat(img)
-        if stat.mean[0] < 120:
-            img = ImageOps.invert(img)
-
-        # Resize image by scale, rs.
-        w, h = img.size
-        rs = 3
-        img = img.resize((w * rs, h * rs), resample=Image.Resampling.LANCZOS)
-
-        img = img.filter(ImageFilter.SHARPEN)
-        img = img.point(lambda p: p > 145 and 255)
-
-        return img
 
     # FUTURE Implement text clean up; unnecessary line-breaks, numbered/bullet lists.
     def _clean_up_text(self, text):

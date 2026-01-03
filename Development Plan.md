@@ -82,7 +82,7 @@ Example :
 - Triggers the system snipping tool (e.g., 'snippingtool /clip' on Windows).
 - Grab image from clipboard once the user finishes snipping.
 - Maintain project-level storage structure :
-  1. `research_log.json` - master list of index cards by : 'table', 'text', 'images';
+  1. `research_log.json` - master list of index cards by : 'table', 'text', 'image';
   2. `tags.json` - project-specific tag library; and,
   3. `/assets` - a subfolder for image captures.
 
