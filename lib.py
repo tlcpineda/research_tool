@@ -32,24 +32,59 @@ def hor_bar(num_chars: int, indent: int = 0, text: str = "") -> None:
     print(display_x)
 
 
-def identify_path(base_type: str, file_type: str = "") -> str:
+# FUTURE Refactor to allow proper file type options; list file types properly
+# elif mode == "file":
+#     # Define file filters based on the type requested
+#     if file_type == "exe":
+#         exts = [("Executable Files", "*.exe"), ("All Files", "*.*")]
+#     elif file_type == "image":
+#         exts = [
+#             ("Image Files", "*.png *.jpg *.jpeg *.bmp *.tiff"),
+#             ("PNG", "*.png"),
+#             ("JPEG", "*.jpg;*.jpeg"),
+#             ("All Files", "*.*")
+#         ]
+#     else:
+#         exts = [("All Files", "*.*")]
+#     selected_path = filedialog.askopenfilename(
+#         title="Select File",
+#         filetypes=exts
+#     )
+def identify_path(base_type: str, file_type: str = "", initdir: str = "") -> str:
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-
-    file_label = file_type.upper()
-    file_ext = file_type.lower()
 
     path = ""
 
     match base_type:
         case "file":
+            file_type = file_type if file_type else "default"
+            filetypes = {
+                "pdf": {
+                    "exts": [("PDF file", "*.pdf"), ("All Files", "*.*")],
+                    "label": "PDF",
+                },
+                "exe": {
+                    "exts": [("Executable file", "*.exe"), ("All Files", "*.*")],
+                    "label": "Executable",
+                },
+                "image": {
+                    "exts": [
+                        ("Image file", "*.bmp, *.jpg, *.png, *.psd, *.tiff"),
+                        ("Bitmap", "*.bmp"),
+                        ("JPEG", "*.jpg; *.jpeg"),
+                        ("PNG", "*.png"),
+                        ("All Files", "*.*"),
+                    ],
+                    "label": "Image",
+                },
+                "default": {"exts": [("All Files", "*.*")], "label": "a"},
+            }
             path = fd.askopenfilename(
-                title=f"Select {file_label} File",
-                filetypes=(
-                    (f"{file_label} files", f"*.{file_ext}"),
-                    ("All files", "*.*"),
-                ),
+                title=f"Select {filetypes[file_type]['label']} File",
+                initialdir=initdir,
+                filetypes=filetypes[file_type]["exts"],
             )
         case "folder":
             path = fd.askdirectory(title="Select Folder")
